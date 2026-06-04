@@ -26,7 +26,7 @@ def _create_project(tmp_path: Path) -> Path:
 
 def test_llm_client_import():
     """LLMClient imports without anthropic installed."""
-    from open_collider.llm.client import LLMClient, LLMError
+    from open_collider.llm.client import LLMClient
     client = LLMClient()
     assert client._client is None
 
@@ -152,6 +152,12 @@ def test_full_iteration_mocked(tmp_path):
     assert iter_dir.is_dir()
     assert (iter_dir / "scored_ideas.json").is_file()
     assert (iter_dir / "config.json").is_file()
+    assert (iter_dir / "ITER_REPORT.html").is_file()
+    assert (brainstorm_dir / "REPORT.html").is_file()
+
+    html = (brainstorm_dir / "REPORT.html").read_text(encoding="utf-8")
+    assert "Raw Retained Pool" in html
+    assert "Test hook one" in html
 
     # Verify scored ideas have the right structure
     scored = json.loads((iter_dir / "scored_ideas.json").read_text())
@@ -160,6 +166,66 @@ def test_full_iteration_mocked(tmp_path):
         assert "idea_id" in idea
         assert "text" in idea
         assert "retained" in idea
+
+
+def test_iter_html_prioritizes_curation_without_repeating_card_title(tmp_path):
+    """HTML reports show curated output first and do not repeat titles in card bodies."""
+    from open_collider.skill_interface import generate_iter_html_report, start_new_brainstorm
+
+    project = _create_project(tmp_path)
+    brainstorm_id = start_new_brainstorm(str(project))
+    brainstorm_dir = project / "brainstorms" / brainstorm_id
+    iter_dir = brainstorm_dir / "iter_001"
+    iter_dir.mkdir()
+
+    (iter_dir / "config.json").write_text(json.dumps({
+        "iteration": 1,
+        "ideas_generated": 3,
+        "ideas_retained": 1,
+    }))
+    (iter_dir / "scored_ideas.json").write_text(json.dumps([{
+        "idea_id": "raw_1",
+        "text": "Raw Retained Title\n\nProblem targeted: raw body",
+        "retained": True,
+        "score_aggregate": 4.2,
+        "combo": "T01_raw",
+    }]))
+    (iter_dir / "curated_ideas.json").write_text(json.dumps([{
+        "rank": 1,
+        "idea_id": "curated_1",
+        "text": "Curated Title\n\nProblem targeted: curated body",
+        "score": 4.6,
+        "combo": "T01_curated",
+        "why_selected": "Strong curated mechanism.",
+    }]))
+    (iter_dir / "insights_without_collision.json").write_text(json.dumps([{
+        "rank": 1,
+        "idea_id": "insight_1",
+        "text": "Insight Title\n\nProblem targeted: insight body",
+        "score": 4.1,
+        "combo": "T01_insight",
+        "why_kept": "Useful standalone insight.",
+    }]))
+    (iter_dir / "numbering_map.json").write_text(json.dumps([
+        {"number": 1, "idea_id": "curated_1", "kind": "curated"},
+        {"number": 2, "idea_id": "insight_1", "kind": "insight"},
+    ]))
+
+    html = generate_iter_html_report(str(project), 1)
+
+    assert html.index("Curated Ideas") < html.index("Insights Without Collision")
+    assert html.index("Insights Without Collision") < html.index("Raw Retained Pool")
+    assert 'class="comparison-grid"' not in html
+    assert 'class="idea-section curated-priority"' in html
+    assert 'class="idea-section insights-compact"' in html
+    assert 'class="idea-section raw-pool"' in html
+    assert "repeat(2, minmax(0, 1fr))" in html
+    assert ".raw-pool .idea-grid" in html
+    assert "top: 0;" in html
+    assert "bottom: 0;" in html
+    assert html.count("Curated Title") == 1
+    assert html.count("Insight Title") == 1
+    assert html.count("Raw Retained Title") == 1
 
 
 def test_apply_flags_mocked(tmp_path):
@@ -182,7 +248,7 @@ def test_apply_flags_mocked(tmp_path):
     orch.llm = MagicMock()
     orch.llm.call = mock_llm_call
 
-    result = orch.run_iteration()
+    orch.run_iteration()
 
     # Get idea IDs from scored_ideas.json
     brainstorm_dir = project / "brainstorms" / "brainstorm_001"
@@ -234,3 +300,4 @@ def test_close_session(tmp_path):
     assert "brainstorm_001" in report
     brainstorm_dir = project / "brainstorms" / "brainstorm_001"
     assert (brainstorm_dir / "REPORT.md").is_file()
+    assert (brainstorm_dir / "REPORT.html").is_file()
