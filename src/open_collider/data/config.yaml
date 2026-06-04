@@ -1,4 +1,17 @@
 generic_pipeline:
+  # API provider used when model names are not prefixed.
+  # Supported: anthropic, openai, codex
+  # Individual model values can override this with a provider prefix:
+  #   openai:gpt-4.1
+  #   anthropic:claude-sonnet-4-20250514
+  #   codex:default
+  # If llm_provider is openai or codex, unprefixed model names must belong to
+  # that provider. Prefix Claude models with anthropic: when mixing providers.
+  # Codex-only projects can set all three model values to default to let the
+  # local Codex CLI choose an account-supported model. Lower concurrency because
+  # each call starts a local codex exec process.
+  llm_provider: "anthropic"
+
   # Models (Opus for domains where creativity matters, Sonnet for volume)
   domain_model: "claude-opus-4-20250514"
   generation_model: "claude-sonnet-4-20250514"

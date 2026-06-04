@@ -111,7 +111,7 @@ class DataLoader:
         else:
             bank_path = self._project_dir / "domain_bank.yaml"
             if not bank_path.is_file():
-                raise DataLoadError(f"domain_bank.yaml not found")
+                raise DataLoadError("domain_bank.yaml not found")
             raw = yaml.safe_load(bank_path.read_text(encoding="utf-8")) or {}
         domain_sets = {}
         for sid, sdata in (raw.get("sets") or {}).items():

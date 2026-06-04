@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 
 from open_collider.config import load_project_config
-from open_collider.llm.client import LLMClient, LLMError
+from open_collider.llm.client import LLMClient, validate_provider_model_config
 from open_collider.phases.idea_scorer import apply_threshold
 from open_collider.skill_interface import (
     init_iteration,
@@ -34,7 +34,11 @@ class BrainstormOrchestrator:
         self.project_dir = project_dir
         self.brainstorm_id = brainstorm_id
         self.config = load_project_config(str(project_dir))
-        self.llm = LLMClient()
+        validate_provider_model_config(self.config)
+        self.llm = LLMClient(
+            provider=self.config.get("llm_provider", "anthropic"),
+            timeout=self._optional_int_config("llm_timeout"),
+        )
 
     def run_iteration(self) -> dict:
         """Run one brainstorm iteration: domains → ideas → scoring → finalize."""
@@ -65,7 +69,7 @@ class BrainstormOrchestrator:
                 model=result["model"],
                 prompt=result["prompt"],
                 temperature=0.5,
-                max_tokens=16000,
+                max_tokens=self._int_config("domain_max_tokens", 16000),
             )
             yaml_str = parse_domain_response_text(response)
             strategy_domain_yamls[strat_name] = yaml_str
@@ -186,7 +190,7 @@ class BrainstormOrchestrator:
                             model=model,
                             prompt=prompt,
                             temperature=0.9,
-                            max_tokens=4000,
+                            max_tokens=self._int_config("generation_max_tokens", 4000),
                         )
                         ideas = parse_idea_response(combo_info, response)
                         logger.info("Combo %s: %d ideas", combo_id, len(ideas))
@@ -221,7 +225,7 @@ class BrainstormOrchestrator:
                         model=batch_info["model"],
                         prompt=batch_info["prompt"],
                         temperature=0.1,
-                        max_tokens=8000,
+                        max_tokens=self._int_config("scoring_max_tokens", 8000),
                     )
                     scored = parse_scoring_response(batch_info, response, config)
                     logger.info(
@@ -253,3 +257,13 @@ class BrainstormOrchestrator:
         if condition == "has_loved_or_liked":
             return state["has_loved"] or state["has_liked"]
         return True
+
+    def _optional_int_config(self, key: str) -> int | None:
+        value = self.config.get(key)
+        if value is None or value == "":
+            return None
+        return int(value)
+
+    def _int_config(self, key: str, default: int) -> int:
+        value = self.config.get(key, default)
+        return int(value)

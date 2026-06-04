@@ -1,0 +1,4 @@
+interface:
+  display_name: "Open Collider Brainstorm"
+  short_description: "Run and curate Open Collider brainstorms"
+  default_prompt: "Use $open-collider-brainstorm to run a full Open Collider brainstorm for a configured project, including post-run curation."

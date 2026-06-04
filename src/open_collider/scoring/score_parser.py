@@ -31,14 +31,15 @@ class AxisScores:
 #   | 1 | 4 | 5 | 3 | 4 | 5 | **4.25** |
 #   | 1 | 4/5 | 5/5 | 3/5 | 4/5 | 5/5 | 4.25 |
 #   | 1 | **4**/5 | 5 | 3 | 4 | 5 | 4.25 |
+#   | 1 | 4/5 | 5/5 | 3/5 | 4/5 | 5/5 | **4.25 / 5** |
 SCORING_ROW_PATTERN = re.compile(
     r"\|\s*(\d+)\s*\|"  # idea number
-    r"\s*\*{0,2}([\d.]+)\*{0,2}(?:/5)?\s*\|"  # originality
-    r"\s*\*{0,2}([\d.]+)\*{0,2}(?:/5)?\s*\|"  # resistance
-    r"\s*\*{0,2}([\d.]+)\*{0,2}(?:/5)?\s*\|"  # thesis_density
-    r"\s*\*{0,2}([\d.]+)\*{0,2}(?:/5)?\s*\|"  # concrete_grounding
-    r"\s*\*{0,2}([\d.]+)\*{0,2}(?:/5)?\s*\|"  # cognitive_load
-    r"\s*\*{0,2}([\d.]+)\*{0,2}(?:/5)?\s*\|"  # score_aggregate
+    r"\s*\*{0,2}([\d.]+)\*{0,2}(?:\s*/\s*5)?\*{0,2}\s*\|"  # originality
+    r"\s*\*{0,2}([\d.]+)\*{0,2}(?:\s*/\s*5)?\*{0,2}\s*\|"  # resistance
+    r"\s*\*{0,2}([\d.]+)\*{0,2}(?:\s*/\s*5)?\*{0,2}\s*\|"  # thesis_density
+    r"\s*\*{0,2}([\d.]+)\*{0,2}(?:\s*/\s*5)?\*{0,2}\s*\|"  # concrete_grounding
+    r"\s*\*{0,2}([\d.]+)\*{0,2}(?:\s*/\s*5)?\*{0,2}\s*\|"  # cognitive_load
+    r"\s*\*{0,2}([\d.]+)\*{0,2}(?:\s*/\s*5)?\*{0,2}\s*\|"  # score_aggregate
 )
 
 # Pattern to extract judge_note (main strength) from the ✓ line

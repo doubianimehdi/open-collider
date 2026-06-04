@@ -7,6 +7,33 @@
 #   concrete_grounding: 0.20
 #   cognitive_load: 0.15
 
+# API provider used when model names are not prefixed.
+# Supported values: anthropic, openai, codex.
+# llm_provider: anthropic
+#
+# If llm_provider is openai or codex, also configure matching unprefixed
+# models, or prefix Claude models with anthropic: when mixing providers.
+#
+# Codex-only mode, no API keys required:
+# llm_backend: api
+# llm_provider: codex
+# domain_model: default
+# generation_model: default
+# scoring_model: default
+# max_concurrent: 1
+# max_concurrent_scoring: 1
+#
+# Local servers that expose an OpenAI Responses-compatible API can benefit from smaller limits:
+# llm_timeout: 120
+# domain_max_tokens: 4000
+# generation_max_tokens: 1200
+# scoring_max_tokens: 2000
+#
+# You can also mix providers per stage with model prefixes:
+# domain_model: anthropic:claude-opus-4-20250514
+# generation_model: openai:gpt-4.1
+# scoring_model: codex:default
+
 # Output format for generated ideas
 output_format: >
   Each idea: 2-4 sentences. Free format.

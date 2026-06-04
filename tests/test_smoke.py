@@ -1,10 +1,7 @@
 """Smoke tests for Open Collider v2."""
 
-import json
 import shutil
 from pathlib import Path
-
-import pytest
 
 
 def _create_minimal_project(tmp_path: Path) -> Path:
@@ -34,6 +31,19 @@ def test_all_imports():
     from open_collider.strategies.fresh import FreshStrategy
     from open_collider.strategies.deepen import DeepenStrategy
     from open_collider.strategies.refresh import RefreshStrategy
+
+    imported = (
+        list_brainstorms, start_new_brainstorm, init_iteration,
+        prepare_domain_prompt, parse_domain_response_text,
+        prepare_idea_prompts, parse_idea_response,
+        prepare_scoring_prompts, parse_scoring_response,
+        finalize_iteration, apply_flags, mark_curated, generate_report,
+        load_config, load_project_config, DataLoader,
+        parse_scoring_table, extract_judge_notes, PromptResolver,
+        IdeaGenerator, sample_combos, IdeaScorer, apply_threshold, DEFAULT_WEIGHTS,
+        FreshStrategy, DeepenStrategy, RefreshStrategy,
+    )
+    assert all(imported)
 
 
 def test_load_config():
@@ -116,6 +126,14 @@ def test_score_parser():
     assert results[0].thesis_density == 3.0
     assert results[0].concrete_grounding == 4.0
     assert results[0].cognitive_load == 5.0
+    assert results[0].score_aggregate == 4.25
+
+
+def test_score_parser_accepts_bold_score_with_denominator():
+    from open_collider.scoring.score_parser import parse_scoring_table
+    content = "| 1 | 4/5 | 5/5 | 3/5 | 4/5 | 5/5 | **4.25 / 5** |"
+    results = parse_scoring_table(content)
+    assert len(results) == 1
     assert results[0].score_aggregate == 4.25
 
 
