@@ -91,6 +91,8 @@ function renderMarkdown(md) {
 
 const routes = [
   { re: /^#?\/?$/, view: viewHome },
+  { re: /^#\/guide$/, view: viewGuide },
+  { re: /^#\/settings$/, view: viewSettings },
   { re: /^#\/new$/, view: viewNewProject },
   { re: /^#\/p\/([^/]+)$/, view: viewProject },
   { re: /^#\/p\/([^/]+)\/run\/([^/]+)$/, view: viewRun },
@@ -143,15 +145,15 @@ async function viewHome() {
   <section class="view">
     <div class="hero">
       <div>
-        <div class="kicker">Semantic collision engine</div>
-        <h1>Escape the<br><span class="accent-a">default</span>-prompt<br><span class="accent-b">basin</span>.</h1>
-        <p class="lede">Ask an LLM for ideas and 80% land in the same predictable region.
-        Open Collider forces the model through <strong>counter-intuitive principles from
-        structurally distant domains</strong> — glass physics, fermentation biology, siegecraft —
-        before it generates. The collisions produce ideas that couldn't exist otherwise.</p>
+        <div class="kicker">An idea machine that avoids the obvious</div>
+        <h1>Get the ideas<br>AI <span class="accent-b">never</span><br>gives <span class="accent-a">anyone</span>.</h1>
+        <p class="lede">Ask any AI to brainstorm and you get the same safe suggestions everyone
+        else gets. Open Collider fixes that: it makes the AI <strong>study an unrelated field
+        first</strong> — glass physics, fermentation, ant colonies — then forces a collision with
+        your problem. What comes out is genuinely unexpected, and still useful.</p>
         <div class="hero-actions">
           <a class="btn btn-primary" href="#/new">+ New project</a>
-          <a class="btn btn-ghost" href="https://cdriclion.substack.com/p/why-direct-prompting-pushes-llms" target="_blank" rel="noopener">Read the theory ↗</a>
+          <a class="btn btn-ghost" href="#/guide">How to use it</a>
         </div>
       </div>
       <div class="rig" aria-hidden="true">
@@ -159,19 +161,58 @@ async function viewHome() {
         <div class="orbit a"><div class="p"></div></div>
         <div class="orbit b"><div class="p"></div></div>
         <div class="core"></div>
-        <div class="spark-label mono">your material × distant domains → non-trivial ideas</div>
+        <div class="spark-label mono">your problem × a distant field → ideas nobody else has</div>
       </div>
     </div>
 
-    <div class="pipeline">
-      <div class="step"><div class="n">01 / BRIEF</div><h3>Define the problem</h3>
-        <p>Your ideation goal, constraints, and raw reference texts — the first beam.</p></div>
-      <div class="step"><div class="n">02 / DOMAINS</div><h3>Charge the second beam</h3>
-        <p>An LLM generates structurally distant domains, each carrying a counter-intuitive active principle.</p></div>
-      <div class="step"><div class="n">03 / COLLIDE</div><h3>Mass generation</h3>
-        <p>Every text × domain pair collides in an isolated context. Hundreds of candidate ideas per iteration.</p></div>
-      <div class="step"><div class="n">04 / CURATE</div><h3>Extract the gems</h3>
-        <p>A 5-axis judge scores everything; you flag love / like / trash. Feedback steers the next iteration.</p></div>
+    <div class="explainer">
+      <div class="ex-cell">
+        <h3>What is this, really?</h3>
+        <p>AI models are trained to give the <strong>most likely</strong> answer — which for
+        brainstorming means the most average one. Ask twice, and 80% of the ideas overlap.
+        More instructions ("be original!") don't help; the AI just digs deeper into the same hole.</p>
+        <div class="analogy">It's like asking a chef to invent a new dish: you'll get variations
+        of what they already cook. But make them study how glassblowers handle heat first, and
+        suddenly the dishes get interesting.</div>
+      </div>
+      <div class="ex-cell">
+        <h3>How the trick works</h3>
+        <p><strong>1.</strong> You describe your problem and paste in your raw material (notes, memos, drafts).</p>
+        <p><strong>2.</strong> The machine picks fields that have <strong>nothing to do</strong> with your problem
+        and extracts one surprising mechanism from each.</p>
+        <p><strong>3.</strong> It forces the AI to reason through that mechanism <strong>before</strong> generating —
+        hundreds of times in parallel — then scores everything and shows you only the best ~12.</p>
+        <p>You judge those, and your taste steers the next round. Backed by a 12-project benchmark —
+        <a href="https://cdriclion.substack.com/p/why-direct-prompting-pushes-llms" target="_blank" rel="noopener" style="color:var(--beam-a)">read the research ↗</a></p>
+      </div>
+    </div>
+
+    <div class="usecases">
+      <div class="usecase good">
+        <h4>✓ Use it when…</h4>
+        <ul>
+          <li>You need <b>product, feature, or business ideas</b> beyond the obvious</li>
+          <li>You want <b>marketing angles or content ideas</b> that don't sound like everyone's</li>
+          <li>You're exploring <b>strategy options or research directions</b></li>
+          <li>Brainstorming feels stuck — every session lands on the same 5 ideas</li>
+        </ul>
+      </div>
+      <div class="usecase bad">
+        <h4>✗ Skip it when…</h4>
+        <ul>
+          <li>You need a <b>factual answer</b> — this generates options, not facts</li>
+          <li>The task has <b>one correct solution</b> (a bug fix, a calculation)</li>
+          <li>You can't judge the results yourself — your taste is half the engine</li>
+          <li>You need one quick idea right now — a session surfaces ~12 per round</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="guide-hint">
+      <span class="hn-icon" style="color:var(--beam-a)">◍</span>
+      <span class="gh-text"><strong>New here?</strong> The 3-minute guide walks you through your first
+      session — and demo mode lets you try the whole flow for free, no API key needed.</span>
+      <a class="btn btn-small btn-ghost" href="#/guide">Open the guide</a>
     </div>
 
     <div class="sec-head">
@@ -184,6 +225,267 @@ async function viewHome() {
          it takes two minutes and works in demo mode without an API key.</div>`}
   </section>`;
 }
+
+/* ================================================================
+   VIEW: Guide
+================================================================ */
+
+async function viewGuide() {
+  app.innerHTML = `
+  <section class="view guide">
+    <div class="crumb"><a href="#/">← home</a> / guide</div>
+    <h1 class="page-title">How to use Open Collider</h1>
+    <p class="page-sub">Three minutes, no jargon. What it's for, how a session works, and how to read the results.</p>
+
+    <h2>When should I use it?</h2>
+    <p>Use it whenever you need <strong>many candidate ideas for an open-ended problem</strong> and
+    the usual AI brainstorm keeps giving you safe, samey answers. Typical wins: product and feature
+    concepts, campaign and content angles, naming directions, research questions, strategic options.</p>
+    <p>Don't use it for questions with a single right answer, for facts, or when you won't be able
+    to tell a good idea from a bad one — <strong>your judgment is half of the machine</strong>.
+    The engine produces volume; you provide taste.</p>
+
+    <h2>What do I need?</h2>
+    <p><strong>Nothing, to try it.</strong> Demo mode simulates the whole pipeline with clearly
+    labeled placeholder ideas, so you can learn the workflow for free.</p>
+    <p><strong>For real ideas</strong>, connect an AI provider in <a href="#/settings" style="color:var(--beam-a)">Settings</a> —
+    an Anthropic API key, or any OpenAI-compatible service (OpenAI, OpenRouter, Groq, a local Ollama…).
+    A real round takes roughly 5–15 minutes and costs a few dollars, depending on your provider and models.</p>
+
+    <h2>A session, step by step</h2>
+    <div class="gstep"><span class="gs-n">01</span><div>
+      <h5>Create a project</h5>
+      <p>Describe what you need ideas for, and paste in <strong>raw material</strong>: memos, notes,
+      drafts, anything that captures your problem and your voice. The richer the material, the
+      better the collisions. List "forbidden topics" — themes the machine must not just recycle.</p>
+    </div></div>
+    <div class="gstep"><span class="gs-n">02</span><div>
+      <h5>Start a session and run an iteration</h5>
+      <p>Hit <strong>Start new session</strong>. The machine invents distant fields (each with one
+      counter-intuitive mechanism), collides every text × field pair, generates hundreds of raw
+      ideas, and scores them all. You watch it happen live.</p>
+    </div></div>
+    <div class="gstep"><span class="gs-n">03</span><div>
+      <h5>Judge the curated ideas</h5>
+      <p>You get the top ~12 ideas as cards. Flag each one: <strong style="color:var(--love)">♥ love</strong>
+      (dig deeper here), <strong style="color:var(--like)">↑ like</strong> (decent), or
+      <strong>✕ trash</strong>. Add an optional steering note ("more ideas about timing").</p>
+    </div></div>
+    <div class="gstep"><span class="gs-n">04</span><div>
+      <h5>Run the next iteration</h5>
+      <p>Your flags change what happens next: loved ideas make the machine <strong>deepen</strong> the
+      fields that produced them and <strong>transfer</strong> the mechanisms that worked, while still
+      exploring fresh territory. Most sessions are exhausted after 3–5 rounds.</p>
+    </div></div>
+    <div class="gstep"><span class="gs-n">05</span><div>
+      <h5>Close with a report</h5>
+      <p>Hit <strong>⬡ report</strong> for a clean summary of everything: loved and liked ideas on
+      top, with scores and the fields they came from. Copy it as markdown and share it.</p>
+    </div></div>
+
+    <h2>How to read an idea card</h2>
+    <p>Every idea carries a <strong>score out of 5</strong>, computed by an AI judge across five questions:</p>
+    <table class="axis-table">
+      <tr><td>originality</td><td>Is the underlying idea genuinely new, or repackaged standard advice?</td></tr>
+      <tr><td>resistance</td><td>Does it survive pushback, or does one objection collapse it?</td></tr>
+      <tr><td>thesis</td><td>Can it be stated as one clear, testable claim?</td></tr>
+      <tr><td>grounding</td><td>Could real facts or examples back it up?</td></tr>
+      <tr><td>cognitive load</td><td>Does it make you stop and think, or is it instantly forgettable?</td></tr>
+    </table>
+    <p>The small source line (e.g. <em>"fresh strategy · T01 × Glass physics"</em>) tells you which of
+    your texts collided with which distant field to produce the idea. Expect noise — most raw ideas
+    are discarded before you see anything. That's the design: <strong>volume first, then ruthless filtering</strong>.</p>
+
+    <div class="hero-actions" style="margin-top:44px">
+      <a class="btn btn-primary" href="#/new">+ Create your first project</a>
+      <a class="btn btn-ghost" href="#/settings">⚙ Connect a provider</a>
+    </div>
+  </section>`;
+}
+
+/* ================================================================
+   VIEW: Settings
+================================================================ */
+
+let setProvider = "demo";
+
+window.pickProvider = (p) => {
+  setProvider = p;
+  document.querySelectorAll(".provider-card").forEach(el =>
+    el.classList.toggle("selected", el.dataset.p === p));
+  document.getElementById("anthropic-fields").classList.toggle("hidden", p !== "anthropic");
+  document.getElementById("openai-fields").classList.toggle("hidden", p !== "openai");
+  document.getElementById("models-panel").classList.toggle("hidden", p === "demo");
+};
+
+async function viewSettings() {
+  const s = await api("/api/settings");
+  setProvider = s.provider;
+  const mdl = (k) => esc(s.models[k] || "");
+  const ph = (prov, k) => esc(s.default_models[prov][k]);
+  const pipe = (k) => s.pipeline[k] ?? "";
+
+  app.innerHTML = `
+  <section class="view settings">
+    <div class="crumb"><a href="#/">← home</a> / settings</div>
+    <h1 class="page-title">Settings</h1>
+    <p class="page-sub">Connect an AI provider to generate real ideas. Everything is stored locally
+    on your machine — keys never leave it except to call the provider you choose.</p>
+
+    <div class="fgroup">
+      <label>AI provider</label>
+      <div class="provider-cards">
+        <div class="provider-card ${s.provider === "demo" ? "selected" : ""}" data-p="demo" onclick="pickProvider('demo')">
+          <h4>Demo only</h4>
+          <p>No key, no cost. Simulates the pipeline with placeholder ideas so you can learn the workflow.</p>
+        </div>
+        <div class="provider-card ${s.provider === "anthropic" ? "selected" : ""}" data-p="anthropic" onclick="pickProvider('anthropic')">
+          <h4>Anthropic</h4>
+          <p>Claude models — what Open Collider was designed and benchmarked on. Recommended.</p>
+        </div>
+        <div class="provider-card ${s.provider === "openai" ? "selected" : ""}" data-p="openai" onclick="pickProvider('openai')">
+          <h4>OpenAI-compatible</h4>
+          <p>OpenAI, OpenRouter, Groq, Mistral, local Ollama / LM Studio — anything with a /chat/completions API.</p>
+        </div>
+      </div>
+    </div>
+
+    <div id="anthropic-fields" class="${s.provider === "anthropic" ? "" : "hidden"}">
+      <div class="fgroup">
+        <label>Anthropic API key</label>
+        <div class="key-row">
+          <input type="password" id="f-anthropic-key" placeholder="${s.anthropic_key_set ? "•••• key saved — type to replace" : "sk-ant-…"}">
+        </div>
+        ${s.anthropic_key_set ? `<div class="key-set-note">✓ key saved (${esc(s.anthropic_key_masked)}) — leave blank to keep it</div>` : ""}
+        <div class="hint">Get one at console.anthropic.com → API keys. Also saved to the repo's .env so the Claude Code workflow uses it too.</div>
+      </div>
+    </div>
+
+    <div id="openai-fields" class="${s.provider === "openai" ? "" : "hidden"}">
+      <div class="fgroup">
+        <label>Base URL</label>
+        <input type="text" id="f-openai-url" value="${esc(s.openai_base_url)}" placeholder="https://api.openai.com/v1">
+        <div class="hint">Examples — OpenAI: https://api.openai.com/v1 · OpenRouter: https://openrouter.ai/api/v1 · Groq: https://api.groq.com/openai/v1 · local Ollama: http://localhost:11434/v1</div>
+      </div>
+      <div class="fgroup">
+        <label>API key</label>
+        <div class="key-row">
+          <input type="password" id="f-openai-key" placeholder="${s.openai_key_set ? "•••• key saved — type to replace" : "sk-… (leave empty for local servers like Ollama)"}">
+        </div>
+        ${s.openai_key_set ? `<div class="key-set-note">✓ key saved (${esc(s.openai_key_masked)}) — leave blank to keep it</div>` : ""}
+      </div>
+    </div>
+
+    <div id="models-panel" class="panel ${s.provider === "demo" ? "hidden" : ""}" style="margin-top:8px">
+      <h3>Models <span class="dim" style="text-transform:none;letter-spacing:0">— leave blank for sensible defaults</span></h3>
+      <div class="grid-3">
+        <div class="fgroup" style="margin-bottom:0">
+          <label data-tip="Invents the distant fields. Use your most creative model.">Domain model</label>
+          <input type="text" id="f-m-domain" value="${mdl("domain_model")}" placeholder="${ph(s.provider === "openai" ? "openai" : "anthropic", "domain_model")}">
+        </div>
+        <div class="fgroup" style="margin-bottom:0">
+          <label data-tip="Mass-generates ideas in parallel. A fast, cheaper model works well.">Generation model</label>
+          <input type="text" id="f-m-gen" value="${mdl("generation_model")}" placeholder="${ph(s.provider === "openai" ? "openai" : "anthropic", "generation_model")}">
+        </div>
+        <div class="fgroup" style="margin-bottom:0">
+          <label data-tip="Scores every idea on the 5 axes. Needs to follow a strict table format.">Scoring model</label>
+          <input type="text" id="f-m-score" value="${mdl("scoring_model")}" placeholder="${ph(s.provider === "openai" ? "openai" : "anthropic", "scoring_model")}">
+        </div>
+      </div>
+    </div>
+
+    <details class="adv-details">
+      <summary>▸ Advanced pipeline tuning</summary>
+      <div class="panel" style="margin-top:6px">
+        <div class="grid-2">
+          <div class="fgroup" style="margin-bottom:0">
+            <label data-tip="Ideas scoring below this are discarded before curation. Default 4.2 of 5.">Score threshold</label>
+            <input type="text" id="f-p-threshold" value="${pipe("score_threshold")}" placeholder="4.2 (default)">
+          </div>
+          <div class="fgroup" style="margin-bottom:0">
+            <label data-tip="How many text × field collisions in the very first round. More = more ideas, more cost. Default 24.">Collisions, first round</label>
+            <input type="text" id="f-p-first" value="${pipe("combos_first_iteration")}" placeholder="24 (default)">
+          </div>
+          <div class="fgroup" style="margin-bottom:0">
+            <label data-tip="Collisions per strategy in later rounds (3 strategies run in parallel). Default 12 each.">Collisions per strategy</label>
+            <input type="text" id="f-p-per" value="${pipe("combos_per_strategy")}" placeholder="12 (default)">
+          </div>
+          <div class="fgroup" style="margin-bottom:0">
+            <label data-tip="Parallel API calls during generation. Lower this if you hit rate limits.">Max parallel calls</label>
+            <input type="text" id="f-p-conc" value="${pipe("max_concurrent")}" placeholder="4 (default)">
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <div id="test-result"></div>
+
+    <div class="form-actions">
+      <button class="btn-primary" id="f-save" onclick="saveSettings()">Save settings</button>
+      <button class="btn-ghost" id="f-test" onclick="testSettings()">Test connection</button>
+      <span class="mono dim" id="settings-note"></span>
+    </div>
+  </section>`;
+}
+
+window.saveSettings = async (silent = false) => {
+  const btn = document.getElementById("f-save");
+  btn.disabled = true;
+  const keyVal = (id) => {
+    const v = document.getElementById(id).value.trim();
+    return v === "" ? "__KEEP__" : v;
+  };
+  const body = {
+    provider: setProvider,
+    anthropic_api_key: keyVal("f-anthropic-key"),
+    openai_api_key: keyVal("f-openai-key"),
+    openai_base_url: document.getElementById("f-openai-url").value.trim(),
+    models: {
+      domain_model: document.getElementById("f-m-domain").value.trim(),
+      generation_model: document.getElementById("f-m-gen").value.trim(),
+      scoring_model: document.getElementById("f-m-score").value.trim(),
+    },
+    pipeline: {
+      score_threshold: document.getElementById("f-p-threshold").value.trim(),
+      combos_first_iteration: document.getElementById("f-p-first").value.trim(),
+      combos_per_strategy: document.getElementById("f-p-per").value.trim(),
+      max_concurrent: document.getElementById("f-p-conc").value.trim(),
+    },
+  };
+  try {
+    const res = await api("/api/settings", { method: "POST", body: JSON.stringify(body) });
+    LIVE_AVAILABLE = res.live_available;
+    runMode = null; // re-derive on next project view
+    updatePill(res.provider, res.live_available);
+    if (!silent) {
+      toast("Settings saved");
+      viewSettings();
+    }
+    return true;
+  } catch (e) {
+    toast(e.message, true);
+    return false;
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+window.testSettings = async () => {
+  const btn = document.getElementById("f-test");
+  const box = document.getElementById("test-result");
+  // Save first so the test uses what's on screen
+  if (!(await saveSettings(true))) return;
+  btn.disabled = true;
+  box.innerHTML = `<div class="test-result"><span class="spinner"></span>Testing connection…</div>`;
+  try {
+    const res = await api("/api/settings/test", { method: "POST" });
+    box.innerHTML = `<div class="test-result ${res.ok ? "ok" : "fail"}">${res.ok ? "✓" : "✕"} ${esc(res.message)}</div>`;
+  } catch (e) {
+    box.innerHTML = `<div class="test-result fail">✕ ${esc(e.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+};
 
 /* ================================================================
    VIEW: New project wizard
@@ -227,40 +529,42 @@ async function viewNewProject() {
   <section class="view wizard">
     <div class="crumb"><a href="#/">← home</a></div>
     <h1 class="page-title">New project</h1>
-    <p class="page-sub">Define your ideation problem and feed the collider raw reference material.
-    The richer the material, the better the collisions.</p>
+    <p class="page-sub">Tell the machine what you need ideas for, then feed it raw material.
+    The richer the material, the better the collisions. Two minutes, tops.</p>
 
     <div class="fgroup">
       <label>Project name <span class="req">*</span></label>
       <input type="text" id="f-name" placeholder="e.g. discover_weekly_redesign">
     </div>
     <div class="fgroup">
-      <label>Objective <span class="req">*</span></label>
-      <textarea id="f-objective" rows="3" placeholder="What are you ideating on? e.g. Structural redesigns of Spotify's Discover Weekly that break users out of their taste bubble."></textarea>
+      <label>What do you need ideas for? <span class="req">*</span></label>
+      <textarea id="f-objective" rows="3" placeholder="One or two sentences. e.g. Redesigns of Spotify's Discover Weekly that break users out of their taste bubble."></textarea>
+      <div class="hint">Be specific about the problem, not the solution — the machine supplies the unexpected part.</div>
     </div>
     <div class="fgroup">
-      <label>Context</label>
-      <textarea id="f-context" rows="2" placeholder="Where will the ideas be used? Who is the audience?"></textarea>
+      <label>Context — where will the ideas be used?</label>
+      <textarea id="f-context" rows="2" placeholder="e.g. Feeding a product strategy offsite for the personalization team."></textarea>
     </div>
     <div class="fgroup">
-      <label>Constraints</label>
-      <textarea id="f-constraints" rows="2" placeholder="Hard limits the ideas must respect."></textarea>
+      <label>Hard constraints</label>
+      <textarea id="f-constraints" rows="2" placeholder="Non-negotiable limits. e.g. Must work within existing licensing deals."></textarea>
     </div>
     <div class="fgroup">
-      <label>What makes a good idea</label>
-      <textarea id="f-good" rows="2" placeholder="Structural qualities you're looking for — testable mechanisms, in your voice, etc."></textarea>
-      <div class="hint">This calibrates the 5-axis judge: originality, resistance, thesis density, grounding, cognitive load.</div>
+      <label>What does a good idea look like to you?</label>
+      <textarea id="f-good" rows="2" placeholder="e.g. Concrete mechanisms we could prototype, not vague directions."></textarea>
+      <div class="hint">This calibrates the judge that scores every idea before you see it.</div>
     </div>
     <div class="fgroup">
-      <label>Globally forbidden topics</label>
-      <input type="text" id="f-forbidden" placeholder="Comma-separated — themes the collider must avoid entirely">
+      <label>Off-limits topics</label>
+      <input type="text" id="f-forbidden" placeholder="Comma-separated themes the machine must avoid entirely, e.g. gamification, NFTs">
     </div>
 
     <div class="sec-head" style="margin-top:44px">
-      <h2>Reference texts <span class="req" style="color:var(--spark)">*</span></h2>
+      <h2>Your raw material <span class="req" style="color:var(--spark)">*</span></h2>
       <button class="btn-small btn-ghost" onclick="addText()">+ add text</button>
     </div>
-    <p class="page-sub" style="margin-bottom:18px">Beam one of the collider: raw material the model collides against distant domains. At least one text is required.</p>
+    <p class="page-sub" style="margin-bottom:18px">Paste memos, notes, drafts, research — anything that captures
+    your problem and your voice. This is what gets collided against the distant fields. At least one text is required.</p>
     <div id="texts-list">${textBlockHtml(0)}</div>
 
     <div class="form-actions">
@@ -352,11 +656,11 @@ async function viewProject(name) {
       <div class="grow">
         <div class="lb-title">Collision chamber</div>
         <div class="lb-sub">${runMode === "demo"
-          ? "Demo mode simulates the full pipeline instantly with placeholder ideas — perfect for exploring the workflow."
-          : "Live mode calls the Anthropic API: Opus for domains, Sonnet for mass generation and scoring. ~$2–3 and ~10 min per iteration."}</div>
+          ? `Demo mode simulates the full pipeline instantly with placeholder ideas — perfect for exploring the workflow.${LIVE_AVAILABLE ? "" : " For real ideas, <a href='#/settings' style='color:var(--spark)'>connect a provider in Settings</a>."}`
+          : "Live mode calls your configured AI provider. Expect roughly 5–15 minutes and a few dollars per iteration, depending on models."}</div>
       </div>
       <div class="mode-toggle">
-        <button class="${runMode === "live" ? "active" : ""}" ${LIVE_AVAILABLE ? "" : "disabled title='Add ANTHROPIC_API_KEY to .env to enable'"}
+        <button class="${runMode === "live" ? "active" : ""}" ${LIVE_AVAILABLE ? "" : "disabled title='Connect a provider in Settings to enable live runs'"}
           onclick="runMode='live'; viewProject('${esc(name)}')">LIVE API</button>
         <button class="${runMode === "demo" ? "active" : ""}" onclick="runMode='demo'; viewProject('${esc(name)}')">DEMO</button>
       </div>
@@ -561,6 +865,14 @@ const AXIS_LABELS = {
   concrete_grounding: "ground", cognitive_load: "cogn",
 };
 
+const AXIS_TIPS = {
+  originality: "Originality — is the underlying idea genuinely new, or repackaged standard advice?",
+  resistance: "Resistance — does the idea survive pushback, or does one objection collapse it?",
+  thesis_density: "Thesis — can it be stated as one clear, testable claim?",
+  concrete_grounding: "Grounding — could real facts, figures or examples back it up?",
+  cognitive_load: "Cognitive load — does it make you stop and think, or is it instantly forgettable?",
+};
+
 function flagButtons(ideaId) {
   const f = curFlags[ideaId];
   return `
@@ -601,7 +913,7 @@ async function viewIteration(name, bid, n) {
 
   const ideaCards = it.curated.map(idea => {
     const axes = Object.entries(idea.scores || {}).map(([k, v]) => `
-      <div class="axis"><span class="ax-k">${AXIS_LABELS[k] || k}</span>
+      <div class="axis"><span class="ax-k" data-tip="${esc(AXIS_TIPS[k] || k)}">${AXIS_LABELS[k] || k}</span>
         <span class="ax-bar"><i style="width:${(v / 5) * 100}%"></i></span></div>`).join("");
     return `
     <div class="idea-card ${curFlags[idea.idea_id] ? "flag-" + curFlags[idea.idea_id] : ""}" id="idea-${idea.idea_id}">
@@ -626,6 +938,8 @@ async function viewIteration(name, bid, n) {
         </div>`).join("")}</div>
     </details>`).join("");
 
+  const isDemo = it.curated.some(c => (c.text || "").includes("simulated demo idea"));
+
   app.innerHTML = `
   <section class="view">
     <div class="crumb"><a href="#/">← projects</a> / <a href="#/p/${encodeURIComponent(name)}">${esc(name)}</a> / ${esc(bid)} / iteration ${n}</div>
@@ -638,8 +952,25 @@ async function viewIteration(name, bid, n) {
       </div>
       <div>
         <div class="histo">${histo}</div>
-        <div class="mono dim" style="margin-top:6px;text-align:right">score distribution 1→5</div>
+        <div class="mono dim" style="margin-top:6px;text-align:right" data-tip="Each bar is a score bucket from 1 to 5. Amber bars passed the quality threshold; only those could be curated.">score distribution 1→5 ⓘ</div>
       </div>
+    </div>
+
+    ${isDemo ? `
+    <div class="help-note demo-banner">
+      <span class="hn-icon">⚠</span>
+      <span>These are <strong>simulated placeholder ideas</strong> from demo mode — they show you the
+      workflow, not real creativity. Connect a provider in <a href="#/settings" style="color:var(--spark)">Settings</a>
+      to generate real ideas.</span>
+    </div>` : ""}
+
+    <div class="help-note">
+      <span class="hn-icon">◍</span>
+      <span><strong>How your flags steer the machine:</strong>
+      <strong style="color:var(--love)">♥ love</strong> makes the next round dig deeper into the field
+      that produced the idea and reuse its mechanism elsewhere ·
+      <strong style="color:var(--like)">↑ like</strong> counts as a weaker positive signal ·
+      <strong>✕ trash</strong> simply discards. Unflagged ideas are treated as trash when the report is built.</span>
     </div>
 
     ${ideaCards || `<div class="empty" style="margin-top:24px">No curated ideas in this iteration.</div>`}
@@ -699,13 +1030,25 @@ async function viewReport(name, bid) {
    Boot
 ================================================================ */
 
+function updatePill(provider, liveAvailable) {
+  const pill = document.getElementById("mode-pill");
+  pill.classList.remove("live", "demo");
+  if (liveAvailable) {
+    pill.textContent = `● live: ${provider}`;
+    pill.classList.add("live");
+  } else {
+    pill.textContent = "○ demo mode — set up in settings";
+    pill.classList.add("demo");
+  }
+  pill.onclick = () => location.hash = "#/settings";
+  pill.style.cursor = "pointer";
+}
+
 (async function boot() {
   try {
     const st = await api("/api/status");
     LIVE_AVAILABLE = st.live_available;
-    const pill = document.getElementById("mode-pill");
-    pill.textContent = st.live_available ? "● API connected" : "○ demo mode (no API key)";
-    pill.classList.add(st.live_available ? "live" : "demo");
+    updatePill(st.provider, st.live_available);
   } catch (_) {}
   route();
 })();

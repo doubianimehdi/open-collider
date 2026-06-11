@@ -16,19 +16,21 @@ uvicorn webapp.server:app --port 8714
 
 Open http://localhost:8714
 
-## Modes
+## Modes & providers
 
 - **Demo mode** (default, no setup): simulates the full pipeline instantly with
   clearly labeled placeholder ideas. Perfect for exploring the workflow.
-- **Live API mode**: real Anthropic calls (Opus for domains, Sonnet for generation
-  and scoring). Enable it by installing the API extras and adding your key:
+- **Live mode**: real LLM calls through the provider you configure in the
+  **Settings** page (gear icon in the top bar):
+  - **Anthropic** — what the engine was designed and benchmarked on. Requires
+    `pip install -e ".[api]"` and an API key (saved to `.env` automatically).
+  - **Any OpenAI-compatible API** — OpenAI, OpenRouter, Groq, Mistral, or local
+    servers like Ollama / LM Studio. Just set the base URL, key, and model names.
 
-```bash
-pip install -e ".[api]"
-cp .env.example .env   # then put your ANTHROPIC_API_KEY in .env
-```
-
-The mode toggle appears on each project's collision chamber bar.
+Settings also let you override models per pipeline stage (domains / generation /
+scoring) and tune the pipeline (score threshold, collisions per round,
+parallelism). Everything is stored locally in `webapp/settings.json` (gitignored).
+The per-project DEMO / LIVE toggle appears on each project's collision chamber bar.
 
 ## What it does
 

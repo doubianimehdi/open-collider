@@ -22,6 +22,7 @@ from pathlib import Path
 import yaml
 
 from open_collider.config import load_project_config
+from webapp import settings as app_settings
 from open_collider.phases.idea_scorer import apply_threshold
 from open_collider.skill_interface import (
     init_iteration,
@@ -163,6 +164,55 @@ class DemoLLM:
 
 
 # ======================================================================
+# OPENAI-COMPATIBLE LLM (OpenAI, OpenRouter, Groq, Ollama, LM Studio, …)
+# ======================================================================
+
+class OpenAICompatLLM:
+    """Minimal chat-completions client over any OpenAI-compatible endpoint."""
+
+    def __init__(self, base_url: str, api_key: str = "", retries: int = 3) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.api_key = api_key
+        self.retries = max(1, retries)
+
+    def call(self, model: str, prompt: str, temperature: float = 0.7,
+             max_tokens: int = 8000) -> str:
+        import urllib.error
+        import urllib.request
+
+        payload = json.dumps({
+            "model": model,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "messages": [{"role": "user", "content": prompt}],
+        }).encode("utf-8")
+
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+
+        request = urllib.request.Request(
+            f"{self.base_url}/chat/completions", data=payload, headers=headers)
+
+        last_error: Exception | None = None
+        for attempt in range(self.retries):
+            if attempt:
+                time.sleep(10 * attempt)
+            try:
+                with urllib.request.urlopen(request, timeout=300) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                return data["choices"][0]["message"]["content"] or ""
+            except urllib.error.HTTPError as exc:
+                body = exc.read().decode("utf-8", errors="replace")[:300]
+                last_error = RuntimeError(f"HTTP {exc.code}: {body}")
+                if exc.code not in (429, 500, 502, 503, 529):
+                    break
+            except Exception as exc:
+                last_error = exc
+        raise RuntimeError(f"OpenAI-compatible API call failed: {last_error}")
+
+
+# ======================================================================
 # RUN REGISTRY
 # ======================================================================
 
@@ -218,8 +268,21 @@ def start_run(project_dir: Path, brainstorm_id: str, mode: str) -> Run:
 def _make_llm(mode: str):
     if mode == "demo":
         return DemoLLM()
+    s = app_settings.load_settings()
+    if s["provider"] == "openai":
+        return OpenAICompatLLM(s["openai_base_url"], s["openai_api_key"])
     from open_collider.llm.client import LLMClient
     return LLMClient()
+
+
+def _apply_settings_overrides(config: dict, mode: str) -> None:
+    """Merge UI settings (models, thresholds, combos) into the engine config."""
+    s = app_settings.load_settings()
+    config.update(app_settings.config_overrides(s, mode))
+    per_strategy = s["pipeline"].get("combos_per_strategy")
+    if per_strategy:
+        for strat_cfg in config.get("strategies", {}).values():
+            strat_cfg["combos"] = per_strategy
 
 
 def _run_iteration(run: Run, project_dir: Path) -> None:
@@ -227,6 +290,7 @@ def _run_iteration(run: Run, project_dir: Path) -> None:
         llm = _make_llm(run.mode)
         state = init_iteration(str(project_dir), brainstorm_id=run.brainstorm_id)
         config = state["config"]
+        _apply_settings_overrides(config, run.mode)
         iteration = state["iteration"]
         run.emit("init", iteration=iteration, brainstorm_id=run.brainstorm_id)
 

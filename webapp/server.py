@@ -7,7 +7,6 @@ Run from the repo root:
 from __future__ import annotations
 
 import json
-import os
 import re
 import shutil
 from pathlib import Path
@@ -25,7 +24,8 @@ from open_collider.skill_interface import (
     generate_brainstorm_report,
     _load_state,
 )
-from webapp.orchestrator import RUNS, start_run
+from webapp import settings as app_settings
+from webapp.orchestrator import RUNS, OpenAICompatLLM, start_run
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PROJECTS_DIR = REPO_ROOT / "projects"
@@ -53,18 +53,6 @@ def _project_dir(name: str) -> Path:
     if not path.is_dir():
         raise HTTPException(404, f"Project '{name}' not found")
     return path
-
-
-def _api_key_available() -> bool:
-    if os.environ.get("ANTHROPIC_API_KEY"):
-        return True
-    env_path = REPO_ROOT / ".env"
-    if env_path.is_file():
-        for line in env_path.read_text().splitlines():
-            if line.strip().startswith("ANTHROPIC_API_KEY=") and \
-               len(line.split("=", 1)[1].strip()) > 10 and "<" not in line:
-                return True
-    return False
 
 
 def _read_json(path: Path, default=None):
@@ -105,21 +93,75 @@ class FlagsRequest(BaseModel):
 
 
 # ======================================================================
-# Status
+# Status & settings
 # ======================================================================
 
 @app.get("/api/status")
 def status():
-    try:
-        import anthropic  # noqa: F401
-        anthropic_installed = True
-    except ImportError:
-        anthropic_installed = False
+    s = app_settings.load_settings()
     return {
-        "api_key": _api_key_available(),
-        "anthropic_installed": anthropic_installed,
-        "live_available": _api_key_available() and anthropic_installed,
+        "provider": s["provider"],
+        "live_available": app_settings.live_available(s),
     }
+
+
+class SettingsUpdate(BaseModel):
+    provider: str | None = None
+    anthropic_api_key: str | None = None
+    openai_api_key: str | None = None
+    openai_base_url: str | None = None
+    models: dict | None = None
+    pipeline: dict | None = None
+
+
+@app.get("/api/settings")
+def get_settings():
+    return app_settings.public_settings()
+
+
+@app.post("/api/settings")
+def post_settings(body: SettingsUpdate):
+    update = {k: v for k, v in body.model_dump().items() if v is not None}
+    try:
+        app_settings.save_settings(update)
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(400, f"Invalid settings value: {exc}")
+    return app_settings.public_settings()
+
+
+@app.post("/api/settings/test")
+def test_settings():
+    """One tiny LLM call with the saved settings to verify connectivity."""
+    s = app_settings.load_settings()
+    if s["provider"] == "demo":
+        return {"ok": True, "message": "Demo mode needs no connection — it always works."}
+
+    if s["provider"] == "anthropic":
+        if not s["anthropic_api_key"]:
+            return {"ok": False, "message": "No Anthropic API key saved yet."}
+        try:
+            import anthropic  # noqa: F401
+        except ImportError:
+            return {"ok": False, "message":
+                    "The 'anthropic' package is not installed. Run: pip install -e \".[api]\""}
+        from open_collider.llm.client import LLMClient, LLMError
+        try:
+            model = app_settings.effective_models(s)["scoring_model"]
+            LLMClient().call(model=model, prompt="Reply with the single word: ok",
+                             temperature=0, max_tokens=10)
+            return {"ok": True, "message": f"Connected — {model} responded."}
+        except (LLMError, Exception) as exc:
+            return {"ok": False, "message": f"Connection failed: {exc}"}
+
+    # OpenAI-compatible
+    try:
+        model = app_settings.effective_models(s)["scoring_model"]
+        client = OpenAICompatLLM(s["openai_base_url"], s["openai_api_key"], retries=1)
+        client.call(model=model, prompt="Reply with the single word: ok",
+                    temperature=0, max_tokens=10)
+        return {"ok": True, "message": f"Connected — {model} responded at {s['openai_base_url']}."}
+    except Exception as exc:
+        return {"ok": False, "message": f"Connection failed: {exc}"}
 
 
 # ======================================================================
@@ -256,8 +298,8 @@ def run_iteration(name: str, body: RunRequest):
     path = _project_dir(name)
     if body.mode not in ("demo", "live"):
         raise HTTPException(400, "mode must be 'demo' or 'live'")
-    if body.mode == "live" and not _api_key_available():
-        raise HTTPException(400, "No ANTHROPIC_API_KEY found — use demo mode or add a key to .env")
+    if body.mode == "live" and not app_settings.live_available():
+        raise HTTPException(400, "Live mode is not configured — open Settings to add a provider and API key")
     # Refuse parallel runs on the same project
     for run in RUNS.values():
         if run.project == name and run.status == "running":

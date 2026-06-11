@@ -37,3 +37,4 @@ _curate_view.py
 _write_curated.py
 _decisions_*.json
 .git.bak/
+webapp/settings.json
