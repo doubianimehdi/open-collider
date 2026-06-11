@@ -977,6 +977,7 @@ async function viewIteration(name, bid, n) {
 
     <div class="cur-submit">
       <span class="counts" id="flag-counts"></span>
+      ${it.has_html_report ? `<a class="btn-small btn-ghost" href="/api/projects/${encodeURIComponent(name)}/brainstorms/${encodeURIComponent(bid)}/iterations/${n}/report.html" target="_blank" rel="noopener">iteration HTML report ↗</a>` : ""}
       <input type="text" id="f-feedback" placeholder="Optional steering note for the next iteration…" value="${esc(it.feedback)}">
       <button class="btn-primary" onclick="submitFlags('${esc(name)}','${bid}',${n})">Lock in feedback</button>
     </div>
@@ -1019,7 +1020,10 @@ async function viewReport(name, bid) {
     <div class="crumb"><a href="#/">← projects</a> / <a href="#/p/${encodeURIComponent(name)}">${esc(name)}</a> / ${esc(bid)} / report</div>
     <div class="sec-head" style="margin-top:20px">
       <h2>Session report</h2>
-      <button class="btn-small btn-ghost" onclick="navigator.clipboard.writeText(REPORT_MD).then(()=>toast('Markdown copied'))">copy markdown</button>
+      <span class="session-actions">
+        ${rep.has_html ? `<a class="btn-small btn-ghost" href="/api/projects/${encodeURIComponent(name)}/brainstorms/${encodeURIComponent(bid)}/report.html" target="_blank" rel="noopener">open HTML report ↗</a>` : ""}
+        <button class="btn-small btn-ghost" onclick="navigator.clipboard.writeText(REPORT_MD).then(()=>toast('Markdown copied'))">copy markdown</button>
+      </span>
     </div>
     <div class="report-body">${renderMarkdown(rep.markdown)}</div>
   </section>`;

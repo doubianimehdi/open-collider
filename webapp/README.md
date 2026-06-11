@@ -4,6 +4,10 @@ A visual interface for the Open Collider semantic collision engine. Create proje
 launch brainstorm iterations, watch collisions happen live, curate ideas with
 love / like / trash, and read session reports — all from the browser.
 
+**User manual (French):** [`MANUEL.md`](MANUEL.md) — installation, every screen, demo vs live, reports, troubleshooting.
+
+**Fork changelog (PR #1–#3 + Web UI):** [`../CHANGELOG-FORK.md`](../CHANGELOG-FORK.md)
+
 ## Quick start
 
 From the repo root:
@@ -43,8 +47,9 @@ The per-project DEMO / LIVE toggle appears on each project's collision chamber b
    bars. Flag them love / like / trash and add a steering note.
 4. **Iterate** — loved ideas steer the next iteration (deepen + refresh strategies
    activate automatically). Sessions typically exhaust after 3–5 iterations.
-5. **Report** — close the session to get an aggregated REPORT.md, viewable in the
-   UI and saved in `projects/<name>/brainstorms/<session>/`.
+5. **Report** — close the session to get an aggregated REPORT.md (and REPORT.html), viewable in the
+   UI and saved in `projects/<name>/brainstorms/<session>/`. Per-iteration ITER_REPORT.html
+   is generated when you lock in curation feedback.
 
 All artifacts stay on disk in the same structure the CLI/skill flow uses, so the
 web UI and Claude Code workflows are interchangeable.

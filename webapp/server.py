@@ -27,7 +27,8 @@ from open_collider.skill_interface import (
 from webapp import settings as app_settings
 from webapp.orchestrator import RUNS, OpenAICompatLLM, start_run
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+WEBAPP_DIR = Path(__file__).resolve().parent
+REPO_ROOT = WEBAPP_DIR.parent
 PROJECTS_DIR = REPO_ROOT / "projects"
 TEMPLATE_DIR = PROJECTS_DIR / "_template"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -274,7 +275,13 @@ def get_project(name: str):
                 "strategies": cfg.get("strategies_used", []),
             })
         has_report = (bdir / "REPORT.md").is_file()
-        brainstorms.append({**b, "iterations_detail": iters, "has_report": has_report})
+        has_html_report = (bdir / "REPORT.html").is_file()
+        brainstorms.append({
+            **b,
+            "iterations_detail": iters,
+            "has_report": has_report,
+            "has_html_report": has_html_report,
+        })
 
     return {
         "name": name,
@@ -355,6 +362,7 @@ def get_iteration(name: str, bid: str, n: int):
         "flags": flags,
         "feedback": feedback,
         "domains": domains,
+        "has_html_report": (iter_dir / "ITER_REPORT.html").is_file(),
         "stats": {
             "scored": len(scored),
             "retained": sum(1 for i in scored if i.get("retained")),
@@ -414,7 +422,29 @@ def get_report(name: str, bid: str):
     report_path = path / "brainstorms" / bid / "REPORT.md"
     if not report_path.is_file():
         raise HTTPException(404, "No report yet")
-    return {"markdown": report_path.read_text(encoding="utf-8")}
+    html_path = path / "brainstorms" / bid / "REPORT.html"
+    return {
+        "markdown": report_path.read_text(encoding="utf-8"),
+        "has_html": html_path.is_file(),
+    }
+
+
+@app.get("/api/projects/{name}/brainstorms/{bid}/report.html")
+def get_report_html(name: str, bid: str):
+    path = _project_dir(name)
+    html_path = path / "brainstorms" / bid / "REPORT.html"
+    if not html_path.is_file():
+        raise HTTPException(404, "No HTML report yet — generate the session report first")
+    return FileResponse(str(html_path), media_type="text/html; charset=utf-8")
+
+
+@app.get("/api/projects/{name}/brainstorms/{bid}/iterations/{n}/report.html")
+def get_iter_report_html(name: str, bid: str, n: int):
+    path = _project_dir(name)
+    html_path = path / "brainstorms" / bid / f"iter_{n:03d}" / "ITER_REPORT.html"
+    if not html_path.is_file():
+        raise HTTPException(404, "No iteration HTML report yet — submit curation flags first")
+    return FileResponse(str(html_path), media_type="text/html; charset=utf-8")
 
 
 # ======================================================================
@@ -422,6 +452,14 @@ def get_report(name: str, bid: str):
 # ======================================================================
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+
+@app.get("/manuel")
+def manuel():
+    path = WEBAPP_DIR / "MANUEL.md"
+    if not path.is_file():
+        raise HTTPException(404, "Manual not found")
+    return FileResponse(str(path), media_type="text/markdown; charset=utf-8")
 
 
 @app.get("/")
