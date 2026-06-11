@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Open Collider — Semantic Collision Engine</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@300;400;500;700&family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;1,6..72,300;1,6..72,400&family=Fragment+Mono:ital@0;1&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='40' fill='none' stroke='%234fe3c1' stroke-width='6'/><circle cx='50' cy='50' r='12' fill='%23ffb454'/></svg>">
+</head>
+<body>
+<div class="grain"></div>
+
+<nav id="topbar">
+  <a href="#/" class="brand">
+    <span class="brand-ring"><span class="brand-dot"></span></span>
+    <span class="brand-name">OPEN<em>COLLIDER</em></span>
+  </a>
+  <div class="topbar-right">
+    <a class="topbar-link" href="#/guide">guide</a>
+    <a class="topbar-link" href="#/settings">⚙ settings</a>
+    <span id="mode-pill" class="mode-pill" title="Connection status — configure in Settings">…</span>
+    <a class="topbar-link" href="https://github.com/doubianimehdi/open-collider" target="_blank" rel="noopener">source ↗</a>
+  </div>
+</nav>
+
+<main id="app"></main>
+
+<footer id="footer">
+  <span class="mono">OPEN COLLIDER · semantic collision engine</span>
+  <span class="mono dim">bisociation, scaled — after Koestler (1964)</span>
+</footer>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

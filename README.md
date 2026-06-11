@@ -15,7 +15,19 @@ It's the first method shipped by [Oparine](https://oparine.ai), a research pract
 
 ## Quick start
 
-Open Collider runs inside [Claude Code](https://claude.ai/code), in two modes. Requires **Python >=3.10**.
+### Web UI (visual interface)
+
+A browser interface for the full workflow — project setup, live collision runs, curation, reports. Works instantly in demo mode (no API key), or against the real Anthropic API. See [`webapp/README.md`](webapp/README.md).
+
+```bash
+pip install -e . -r webapp/requirements.txt
+uvicorn webapp.server:app --port 8714
+# open http://localhost:8714
+```
+
+### Claude Code modes
+
+Open Collider also runs inside [Claude Code](https://claude.ai/code), in two modes. Requires **Python >=3.10**.
 
 ### Skill mode (free, no API key)
 
