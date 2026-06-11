@@ -17,7 +17,7 @@ It's the first method shipped by [Oparine](https://oparine.ai), a research pract
 
 ### Web UI (visual interface)
 
-A browser interface for the full workflow — project setup, live collision runs, curation, reports. Works instantly in demo mode (no API key), or against the real Anthropic API. See [`webapp/README.md`](webapp/README.md) and the French user manual [`webapp/MANUEL.md`](webapp/MANUEL.md). Fork changes: [`CHANGELOG-FORK.md`](CHANGELOG-FORK.md).
+A browser interface for the full workflow — project setup, live collision runs, curation, reports. Works instantly in demo mode (no API key), or against the real Anthropic API. See [`webapp/README.md`](webapp/README.md) and the French user manual at `#/manuel` ([`webapp/static/manuel.md`](webapp/static/manuel.md)). Fork changes: [`CHANGELOG-FORK.md`](CHANGELOG-FORK.md).
 
 ```bash
 pip install -e . -r webapp/requirements.txt

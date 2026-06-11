@@ -330,10 +330,15 @@ def _run_iteration(run: Run, project_dir: Path) -> None:
         all_ideas: list[dict] = []
         max_concurrent = config.get("max_concurrent", 4)
 
+        from webapp.idea_clarity import load_brief
+
+        brief = load_brief(project_dir)
         for strat_name, yaml_str in strategy_domain_yamls.items():
             combos = prepare_idea_prompts(str(project_dir), yaml_str, strat_name, state)
             run.emit("collide_start", strategy=strat_name, n_combos=len(combos))
-            ideas = asyncio.run(_generate_parallel(run, llm, combos, max_concurrent))
+            ideas = asyncio.run(
+                _generate_parallel(run, llm, combos, max_concurrent, brief)
+            )
             for idea in ideas:
                 idea["strategy"] = strat_name
                 idea["iteration"] = iteration
@@ -370,7 +375,10 @@ def _run_iteration(run: Run, project_dir: Path) -> None:
             all_ideas, scored_ideas, strategy_to_ideas,
         )
 
-        curated = _curate(Path(state["iter_dir"]), retained, strategy_domain_yamls)
+        curated = _curate(
+            Path(state["iter_dir"]), retained, strategy_domain_yamls, project_dir,
+            mode=run.mode,
+        )
         mark_curated(str(project_dir))
 
         result["brainstorm_id"] = run.brainstorm_id
@@ -399,7 +407,15 @@ def _cleanup_failed_iteration(state: dict | None) -> None:
         shutil.rmtree(iter_dir, ignore_errors=True)
 
 
-async def _generate_parallel(run: Run, llm, combos: list[dict], max_concurrent: int) -> list[dict]:
+async def _generate_parallel(
+    run: Run,
+    llm,
+    combos: list[dict],
+    max_concurrent: int,
+    brief: dict,
+) -> list[dict]:
+    from webapp.clarity_llm import attach_clarity_batch
+
     semaphore = asyncio.Semaphore(max_concurrent)
     all_ideas: list[dict] = []
     done_count = 0
@@ -414,6 +430,20 @@ async def _generate_parallel(run: Run, llm, combos: list[dict], max_concurrent: 
                     temperature=0.9, max_tokens=4000,
                 )
                 ideas = parse_idea_response(combo, response)
+                collision_ctx = {
+                    "text_id": combo.get("text_id", ""),
+                    "domain_set": combo.get("set_id", ""),
+                    "domain_name": "",
+                    "active_principle": "",
+                }
+                ideas = await attach_clarity_batch(
+                    ideas,
+                    brief,
+                    llm,
+                    mode=run.mode,
+                    collision_ctx=collision_ctx,
+                    model=combo.get("model", "gpt-4o-mini"),
+                )
             except Exception as exc:
                 logger.warning("Combo %s failed: %s", combo["combo_id"], exc)
                 ideas = []
@@ -465,8 +495,14 @@ async def _score_parallel(run: Run, llm, batches: list[dict], config: dict,
 
 
 def _curate(iter_dir: Path, retained: list[dict],
-            strategy_domain_yamls: dict[str, str]) -> list[dict]:
-    """Top retained ideas by score -> curated_ideas.json (rank, score, source note)."""
+            strategy_domain_yamls: dict[str, str],
+            project_dir: Path,
+            *,
+            mode: str = "demo") -> list[dict]:
+    """Top retained ideas by score -> curated_ideas.json (rank, score, clarity, source note)."""
+    from webapp.clarity_llm import needs_clarity_refresh
+    from webapp.idea_clarity import build_clarity
+
     set_names: dict[str, str] = {}
     for yaml_str in strategy_domain_yamls.values():
         bank = yaml.safe_load(yaml_str) or {}
@@ -477,7 +513,7 @@ def _curate(iter_dir: Path, retained: list[dict],
     curated = []
     for rank, idea in enumerate(top[:CURATED_TOP_N], 1):
         set_id = idea.get("set_id", "")
-        curated.append({
+        item = {
             "idea_id": idea.get("idea_id", ""),
             "rank": rank,
             "score": idea.get("score_aggregate", 0),
@@ -491,7 +527,12 @@ def _curate(iter_dir: Path, retained: list[dict],
             "strategy": idea.get("strategy", ""),
             "set_id": set_id,
             "text_id": idea.get("text_id", ""),
-        })
+        }
+        clarity = idea.get("clarity")
+        if needs_clarity_refresh(clarity):
+            clarity = build_clarity({**item, **idea}, project_dir, mode=mode)
+        item["clarity"] = clarity
+        curated.append(item)
     _save_json(iter_dir / "curated_ideas.json", curated)
     insights_path = iter_dir / "insights_without_collision.json"
     if not insights_path.is_file():

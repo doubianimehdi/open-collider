@@ -42,10 +42,11 @@ function toast(msg, isError = false) {
   toastTimer = setTimeout(() => el.classList.add("hidden"), 4200);
 }
 
-/* full markdown renderer for reports */
+/* full markdown renderer for reports and manual */
 function renderMarkdown(md) {
   const lines = md.split("\n");
   let html = "", inList = false, tableBuf = [];
+  let inCode = false, codeBuf = [];
 
   const flushTable = () => {
     if (!tableBuf.length) return;
@@ -60,15 +61,28 @@ function renderMarkdown(md) {
     tableBuf = [];
   };
   const closeList = () => { if (inList) { html += "</ul>"; inList = false; } };
+  const closeCode = () => {
+    if (!inCode) return;
+    html += `<pre class="md-pre"><code>${esc(codeBuf.join("\n"))}</code></pre>`;
+    inCode = false;
+    codeBuf = [];
+  };
 
   for (const line of lines) {
+    if (/^```/.test(line)) {
+      flushTable(); closeList();
+      if (inCode) closeCode();
+      else { inCode = true; codeBuf = []; }
+      continue;
+    }
+    if (inCode) { codeBuf.push(line); continue; }
     if (/^\s*\|.*\|\s*$/.test(line)) { closeList(); tableBuf.push(line); continue; }
     flushTable();
     if (/^---+\s*$/.test(line)) { closeList(); html += "<hr>"; continue; }
     let m;
     if ((m = line.match(/^(#{1,4})\s+(.*)/))) {
       closeList();
-      const lvl = Math.min(m[1].length, 3);
+      const lvl = Math.min(m[1].length, 4);
       html += `<h${lvl}>${mdInline(m[2])}</h${lvl}>`;
       continue;
     }
@@ -81,7 +95,7 @@ function renderMarkdown(md) {
     if (line.trim() === "") continue;
     html += `<p>${mdInline(line)}</p>`;
   }
-  flushTable(); closeList();
+  flushTable(); closeList(); closeCode();
   return html;
 }
 
@@ -92,11 +106,13 @@ function renderMarkdown(md) {
 const routes = [
   { re: /^#?\/?$/, view: viewHome },
   { re: /^#\/guide$/, view: viewGuide },
+  { re: /^#\/manuel$/, view: viewManuel },
   { re: /^#\/settings$/, view: viewSettings },
   { re: /^#\/new$/, view: viewNewProject },
   { re: /^#\/p\/([^/]+)$/, view: viewProject },
   { re: /^#\/p\/([^/]+)\/run\/([^/]+)$/, view: viewRun },
   { re: /^#\/p\/([^/]+)\/b\/([^/]+)\/i\/(\d+)$/, view: viewIteration },
+  { re: /^#\/p\/([^/]+)\/b\/([^/]+)\/synthesis$/, view: viewSynthesis },
   { re: /^#\/p\/([^/]+)\/b\/([^/]+)\/report$/, view: viewReport },
 ];
 
@@ -278,10 +294,25 @@ async function viewGuide() {
       exploring fresh territory. Most sessions are exhausted after 3–5 rounds.</p>
     </div></div>
     <div class="gstep"><span class="gs-n">05</span><div>
-      <h5>Close with a report</h5>
-      <p>Hit <strong>⬡ report</strong> for a clean summary of everything: loved and liked ideas on
-      top, with scores and the fields they came from. Copy it as markdown and share it.</p>
+      <h5>Session synthesis (Bilan)</h5>
+      <p>Click <strong>◈ Bilan</strong> for a structured read: favorites ♥ first, ideas to
+      explore, steering notes, session timeline. Validate when you're done — the compass shows
+      « Bilan validé ». Full French walkthrough: <a href="#/manuel" style="color:var(--beam-a)">manuel</a>.</p>
     </div></div>
+
+    <h2>How to read En clair</h2>
+    <p>Every idea card includes a French block <strong>En clair</strong> — read it <em>before</em> the
+    English original. It is generated <strong>at idea creation</strong> (LLM in live mode, simulated
+    templates in demo). Older iterations refresh automatically on first load if clarity was outdated.</p>
+    <table class="axis-table">
+      <tr><td>Headline</td><td>One sentence: what to test for <strong>your</strong> brief</td></tr>
+      <tr><td>Pour votre sujet</td><td>Borrowed mechanism in plain French, tied to your product or challenge</td></tr>
+      <tr><td>À appliquer</td><td>Three concrete actions on the product — not meta-instructions</td></tr>
+      <tr><td>Cette semaine</td><td>One 30-minute test with a real person</td></tr>
+      <tr><td>Prochaine étape</td><td>Follow-up after the test (e.g. note a simpler variant) — not a copy of the test</td></tr>
+    </table>
+    <p>The collision line (<em>De T01 + inspired by …</em>) uses the domain named <strong>in the idea text</strong>,
+    not just the generic domain-set label.</p>
 
     <h2>How to read an idea card</h2>
     <p>Every idea carries a <strong>score out of 5</strong>, computed by an AI judge across five questions:</p>
@@ -299,6 +330,26 @@ async function viewGuide() {
     <div class="hero-actions" style="margin-top:44px">
       <a class="btn btn-primary" href="#/new">+ Create your first project</a>
       <a class="btn btn-ghost" href="#/settings">⚙ Connect a provider</a>
+    </div>
+  </section>`;
+}
+
+/* ================================================================
+   VIEW: Manuel (FR)
+================================================================ */
+
+async function viewManuel() {
+  const res = await fetch("/static/manuel.md");
+  if (!res.ok) throw new Error("Manuel introuvable — vérifiez que le serveur est à jour");
+  const markdown = await res.text();
+  app.innerHTML = `
+  <section class="view guide">
+    <div class="crumb"><a href="#/">← accueil</a> / manuel</div>
+    <div class="report-body manual-body">${renderMarkdown(markdown)}</div>
+    <div class="hero-actions" style="margin-top:36px">
+      <a class="btn btn-primary" href="#/new">+ Créer un projet</a>
+      <a class="btn btn-ghost" href="#/guide">Guide (EN)</a>
+      <a class="btn btn-ghost" href="#/settings">⚙ Réglages</a>
     </div>
   </section>`;
 }
@@ -605,9 +656,153 @@ window.submitProject = async () => {
 
 let runMode = null;
 
+function journeyStep(session) {
+  if (!session || !session.iterations_detail?.length) return 2;
+  if (session.synthesis_done) return 5;
+  const last = session.iterations_detail[session.iterations_detail.length - 1];
+  if (!last.flagged) return 3;
+  if (session.has_report) return 5;
+  return 4;
+}
+
+function renderSessionCompass(nav) {
+  if (!nav) return "";
+  const complete = nav.synthesis_complete;
+  const cur = complete ? 99 : (nav.current_step || 1);
+  const steps = nav.steps || [];
+  return `
+  <nav class="session-compass ${complete ? "complete" : ""}" aria-label="Où vous en êtes">
+    ${complete ? `<div class="sc-done-banner">✓ Bilan validé${nav.validation?.validated_at ? ` · ${esc(nav.validation.validated_at)}` : ""}</div>` : ""}
+    <div class="sc-path">
+      ${steps.map((s, i) => `
+        <span class="sc-node ${complete || s.n < cur ? "done" : ""} ${!complete && s.n === cur ? "here" : ""}" title="${esc(s.hint)}">
+          <span class="sc-num">${complete || s.n < cur ? "✓" : s.n}</span>
+          <span class="sc-lbl">${esc(s.label)}</span>
+        </span>${i < steps.length - 1 ? '<span class="sc-arrow">→</span>' : ""}`).join("")}
+    </div>
+    <div class="sc-body">
+      <p class="sc-objective">${esc(nav.objective || nav.project || "")}</p>
+      ${nav.came_from && !complete ? `<p class="sc-from"><span class="dim">Étape d'avant :</span> <strong>${esc(nav.came_from)}</strong></p>` : ""}
+      <p class="sc-now"><span class="dim">${complete ? "Terminé —" : "Maintenant —"}</span> <strong>${esc(nav.now_label || "")}</strong> : ${esc(nav.now_action || nav.now_hint || "")}</p>
+      ${nav.next_step && !complete ? `<p class="sc-next"><span class="dim">Ensuite :</span> <strong>${esc(nav.next_step)}</strong></p>` : ""}
+      ${complete && nav.validation?.note ? `<p class="sc-note"><span class="dim">Votre prochaine étape :</span> ${esc(nav.validation.note)}</p>` : ""}
+    </div>
+  </nav>`;
+}
+
+function renderCollisionBlock(idea) {
+  const c = idea.collision || {};
+  const inspiration = c.inspiration || c.domain_name || c.domain_set || "?";
+  const textTitle = c.text_title || c.text_id || "votre texte";
+  if (!c.text_id && !c.source_note && !idea.source_note) {
+    return idea.source_note ? `<p class="collision-strategy dim">${esc(idea.source_note)}</p>` : "";
+  }
+  return `
+  <div class="collision-context">
+    <p class="collision-simple">
+      <span class="cs-k">De</span> ${esc(textTitle)}
+      <span class="cs-plus">+</span>
+      <span class="cs-k">inspiré par</span> ${esc(inspiration)}
+    </p>
+    ${idea.iteration ? `<p class="collision-strategy dim">Session ${idea.iteration}</p>` : ""}
+  </div>`;
+}
+
+function renderClarity(idea) {
+  const c = idea.clarity;
+  if (!c) {
+    const plain = idea.plain_summary;
+    if (!plain) return "";
+    return `
+    <div class="idea-plain">
+      <span class="plain-k">En clair</span>
+      <p>${esc(plain.replace(/^En clair\s*:\s*/i, ""))}</p>
+    </div>`;
+  }
+  const actions = (c.actions || []).map(a => `<li>${esc(a)}</li>`).join("");
+  return `
+  <div class="idea-clarity">
+    <span class="plain-k">En clair</span>
+    <p class="clarity-head">${esc(c.headline_fr || "")}</p>
+    <p class="clarity-link"><strong>Pour votre sujet :</strong> ${esc((c.pour_vous || "").replace(/\*\*/g, ""))}</p>
+    ${actions ? `
+    <div class="clarity-actions">
+      <span class="ca-k">À appliquer concrètement</span>
+      <ol>${actions}</ol>
+    </div>` : ""}
+    ${c.test ? `<p class="clarity-test"><strong>Cette semaine (≈30 min) :</strong> ${esc(c.test)}</p>` : ""}
+  </div>`;
+}
+
+function renderOriginalIdea(text) {
+  if (!text) return "";
+  return `
+  <details class="idea-original">
+    <summary>Texte original (tel que généré)</summary>
+    <div class="idea-original-body">${mdInline(text)}</div>
+  </details>`;
+}
+
+function renderActionBox(text) {
+  if (!text) return "";
+  return `<div class="action-box"><span class="ab-k">Prochaine étape</span><p>${esc(text)}</p></div>`;
+}
+
+function renderJourneyBar(step, name, bid, objective, session) {
+  const steps = [
+    { n: 1, label: "Préparer", hint: "Brief et textes" },
+    { n: 2, label: "Générer", hint: "Lancer une session" },
+    { n: 3, label: "Choisir", hint: "♥ / ↑ / ✕" },
+    { n: 4, label: "Relancer", hint: "Nouvelle session" },
+    { n: 5, label: "Bilan", hint: "Valider" },
+  ];
+  const complete = session?.synthesis_done;
+  const nowActions = {
+    1: "Remplir le brief et ajouter au moins un texte.",
+    2: "Lancer une session pour obtenir de nouvelles idées.",
+    3: "Choisir sur chaque carte : ♥ favorite · ↑ intéressante · ✕ à écarter.",
+    4: "Relancer une session ou ouvrir le bilan.",
+    5: complete
+      ? `Bilan validé${session.synthesis_validated_at ? ` le ${session.synthesis_validated_at}` : ""}.`
+      : "Lire vos favorites ♥, cocher celles à retenir, puis valider le bilan.",
+  };
+  const nav = {
+    project: name,
+    session_id: bid,
+    objective: objective || "",
+    steps,
+    current_step: complete ? 5 : step,
+    synthesis_complete: complete,
+    validation: complete ? { validated_at: session.synthesis_validated_at } : null,
+    now_label: complete ? "Bilan" : steps.find(s => s.n === step)?.label,
+    now_action: nowActions[complete ? 5 : step],
+    came_from: step > 1 && !complete ? steps.find(s => s.n === step - 1)?.label : null,
+    next_step: complete ? null : (step < 5 ? steps.find(s => s.n === step + 1)?.label : null),
+  };
+  const compass = renderSessionCompass(nav);
+  const cta = bid && step >= 3 ? `
+  <div class="journey-cta">
+    <span class="dim">Raccourcis :</span>
+    ${step <= 4 ? `<button class="btn-small btn-primary" onclick="startRun('${esc(name)}','${esc(bid)}')">▸ Relancer</button>` : ""}
+    <button class="btn-small btn-ghost" onclick="openSynthesis('${esc(name)}','${esc(bid)}')">◈ Bilan</button>
+  </div>` : "";
+  return compass + cta;
+}
+
+window.openSynthesis = async (name, bid) => {
+  try {
+    await api(`/api/projects/${encodeURIComponent(name)}/brainstorms/${encodeURIComponent(bid)}/synthesis`, { method: "POST" });
+    location.hash = `#/p/${encodeURIComponent(name)}/b/${bid}/synthesis`;
+  } catch (e) { toast(e.message, true); }
+};
+
 async function viewProject(name) {
   const p = await api(`/api/projects/${encodeURIComponent(name)}`);
   if (runMode === null) runMode = LIVE_AVAILABLE ? "live" : "demo";
+
+  const latest = p.brainstorms.length ? p.brainstorms[p.brainstorms.length - 1] : null;
+  const step = journeyStep(latest);
+  const journeyHtml = renderJourneyBar(step, name, latest?.brainstorm_id || null, p.brief.objective, latest);
 
   const briefItems = [
     ["objective", p.brief.objective],
@@ -624,9 +819,9 @@ async function viewProject(name) {
     const iters = b.iterations_detail.map(it => `
       <div class="iter-row" onclick="location.hash='#/p/${encodeURIComponent(name)}/b/${b.brainstorm_id}/i/${it.iteration}'">
         <span class="it-n">ITER ${String(it.iteration).padStart(2, "0")}</span>
-        <span class="it-stats">${it.generated} generated → ${it.retained} retained → ${it.curated} curated</span>
+        <span class="it-stats">${it.generated} générées → ${it.retained} retenues → ${it.curated} curatées</span>
         <span class="it-stats dim">${it.strategies.join(" + ")}</span>
-        <span class="badge ${it.flagged ? "ok" : "todo"}">${it.flagged ? "feedback in" : "awaiting your verdict"}</span>
+        <span class="badge ${it.flagged ? "ok" : "todo"}">${it.flagged ? "verdict ok" : "à juger"}</span>
       </div>`).join("");
     return `
     <div class="session">
@@ -634,8 +829,9 @@ async function viewProject(name) {
         <span class="sid">${esc(b.brainstorm_id.replace("_", " "))}</span>
         <span class="stats">${b.iterations} iteration${b.iterations === 1 ? "" : "s"} · <b style="color:var(--love)">${b.loved}</b> loved · <b style="color:var(--like)">${b.liked}</b> liked</span>
         <span class="session-actions">
-          ${b.iterations > 0 ? `<button class="btn-small btn-ghost" onclick="startRun('${esc(name)}','${b.brainstorm_id}')">▸ next iteration</button>` : ""}
-          <button class="btn-small btn-ghost" onclick="closeSession('${esc(name)}','${b.brainstorm_id}')">⬡ report</button>
+          ${b.synthesis_done ? `<span class="badge ok">bilan validé</span>` : b.has_report ? `<span class="badge todo">bilan à valider</span>` : ""}
+          ${b.iterations > 0 ? `<button class="btn-small btn-primary" onclick="startRun('${esc(name)}','${b.brainstorm_id}')">▸ Relancer</button>` : ""}
+          <button class="btn-small btn-ghost" onclick="openSynthesis('${esc(name)}','${b.brainstorm_id}')">◈ Bilan</button>
         </span>
       </div>
       ${iters || `<div class="iter-row dim mono" style="cursor:default">no iterations yet</div>`}
@@ -644,7 +840,7 @@ async function viewProject(name) {
 
   app.innerHTML = `
   <section class="view">
-    <div class="crumb"><a href="#/">← projects</a> / ${esc(name)}</div>
+    <div class="crumb"><a href="#/">← projets</a> / ${esc(name)}</div>
     <div class="proj-head">
       <div>
         <h1 class="page-title">${esc(name)}</h1>
@@ -654,18 +850,21 @@ async function viewProject(name) {
 
     <div class="launch-bar">
       <div class="grow">
-        <div class="lb-title">Collision chamber</div>
-        <div class="lb-sub">${runMode === "demo"
-          ? `Demo mode simulates the full pipeline instantly with placeholder ideas — perfect for exploring the workflow.${LIVE_AVAILABLE ? "" : " For real ideas, <a href='#/settings' style='color:var(--spark)'>connect a provider in Settings</a>."}`
-          : "Live mode calls your configured AI provider. Expect roughly 5–15 minutes and a few dollars per iteration, depending on models."}</div>
+        <div class="lb-title">Où en êtes-vous ?</div>
+        <div class="lb-sub">5 étapes : préparer → générer → choisir → relancer → valider le bilan.
+        ${runMode === "demo"
+          ? ` Mode démo pour apprendre le parcours sans clé API.${LIVE_AVAILABLE ? "" : " <a href='#/settings' style='color:var(--spark)'>Connecter un provider</a> pour de vraies idées."}`
+          : " Mode live : comptez 5–15 min par itération."}</div>
       </div>
       <div class="mode-toggle">
         <button class="${runMode === "live" ? "active" : ""}" ${LIVE_AVAILABLE ? "" : "disabled title='Connect a provider in Settings to enable live runs'"}
           onclick="runMode='live'; viewProject('${esc(name)}')">LIVE API</button>
         <button class="${runMode === "demo" ? "active" : ""}" onclick="runMode='demo'; viewProject('${esc(name)}')">DEMO</button>
       </div>
-      <button class="btn-primary" onclick="startRun('${esc(name)}', null)">⚛ Start new session</button>
+      <button class="btn-primary" onclick="startRun('${esc(name)}', null)">1 · Lancer une session</button>
     </div>
+
+    ${journeyHtml}
 
     ${sessions || ""}
 
@@ -696,12 +895,7 @@ window.startRun = async (name, brainstormId) => {
   } catch (e) { toast(e.message, true); }
 };
 
-window.closeSession = async (name, bid) => {
-  try {
-    await api(`/api/projects/${encodeURIComponent(name)}/brainstorms/${bid}/report`, { method: "POST" });
-    location.hash = `#/p/${encodeURIComponent(name)}/b/${bid}/report`;
-  } catch (e) { toast(e.message, true); }
-};
+window.closeSession = openSynthesis;
 
 /* ================================================================
    VIEW: Live run
@@ -920,10 +1114,12 @@ async function viewIteration(name, bid, n) {
       <div class="idea-top">
         <span class="idea-rank">#${String(idea.rank).padStart(2, "0")}</span>
         <span class="idea-score">${Number(idea.score).toFixed(2)}</span>
-        <span class="idea-source">${esc(idea.source_note)}</span>
       </div>
-      <div class="idea-text">${mdInline(idea.text)}</div>
-      ${idea.why_selected ? `<div class="idea-why">${esc(idea.why_selected)}</div>` : ""}
+      ${renderCollisionBlock(idea)}
+      ${renderClarity(idea)}
+      ${renderOriginalIdea(idea.text)}
+      ${idea.why_selected && !(idea.text || "").includes("simulated demo") ? `<div class="idea-why">${esc(idea.why_selected)}</div>` : ""}
+      ${renderActionBox(idea.action)}
       <div class="axes">${axes}</div>
       ${flagButtons(idea.idea_id)}
     </div>`;
@@ -942,13 +1138,14 @@ async function viewIteration(name, bid, n) {
 
   app.innerHTML = `
   <section class="view">
-    <div class="crumb"><a href="#/">← projects</a> / <a href="#/p/${encodeURIComponent(name)}">${esc(name)}</a> / ${esc(bid)} / iteration ${n}</div>
+    ${renderSessionCompass(it.navigation)}
+    <div class="crumb"><a href="#/">← projets</a> / <a href="#/p/${encodeURIComponent(name)}">${esc(name)}</a> / ${esc(bid)} / iteration ${n}</div>
     <div class="cur-head">
       <div>
-        <h1 class="page-title">Iteration ${n} — your verdict</h1>
-        <p class="page-sub" style="margin-bottom:0">${it.config.ideas_generated ?? "?"} ideas collided ·
-          ${it.stats.retained} survived the judge (threshold ${it.stats.threshold ?? "—"}) ·
-          ${it.curated.length} curated below. Your love / like / trash steers the next iteration.</p>
+        <h1 class="page-title">Itération ${n} — votre verdict</h1>
+        <p class="page-sub" style="margin-bottom:0">${it.config.ideas_generated ?? "?"} idées en collision ·
+          ${it.stats.retained} passent le judge (seuil ${it.stats.threshold ?? "—"}) ·
+          ${it.curated.length} curatées ci-dessous. Vos ♥ / ↑ / ✕ orientent la prochaine itération.</p>
       </div>
       <div>
         <div class="histo">${histo}</div>
@@ -966,11 +1163,10 @@ async function viewIteration(name, bid, n) {
 
     <div class="help-note">
       <span class="hn-icon">◍</span>
-      <span><strong>How your flags steer the machine:</strong>
-      <strong style="color:var(--love)">♥ love</strong> makes the next round dig deeper into the field
-      that produced the idea and reuse its mechanism elsewhere ·
-      <strong style="color:var(--like)">↑ like</strong> counts as a weaker positive signal ·
-      <strong>✕ trash</strong> simply discards. Unflagged ideas are treated as trash when the report is built.</span>
+      <span><strong>Étape 3 — choisir :</strong>
+      <strong style="color:var(--love)">♥</strong> favorite ·
+      <strong style="color:var(--like)">↑</strong> intéressante ·
+      <strong>✕</strong> à écarter. Puis enregistrer en bas de page.</span>
     </div>
 
     ${ideaCards || `<div class="empty" style="margin-top:24px">No curated ideas in this iteration.</div>`}
@@ -978,16 +1174,29 @@ async function viewIteration(name, bid, n) {
     <div class="cur-submit">
       <span class="counts" id="flag-counts"></span>
       ${it.has_html_report ? `<a class="btn-small btn-ghost" href="/api/projects/${encodeURIComponent(name)}/brainstorms/${encodeURIComponent(bid)}/iterations/${n}/report.html" target="_blank" rel="noopener">iteration HTML report ↗</a>` : ""}
-      <input type="text" id="f-feedback" placeholder="Optional steering note for the next iteration…" value="${esc(it.feedback)}">
-      <button class="btn-primary" onclick="submitFlags('${esc(name)}','${bid}',${n})">Lock in feedback</button>
+      <input type="text" id="f-feedback" placeholder="Note de pilotage pour la prochaine itération (optionnel)…" value="${esc(it.feedback)}">
+      <button class="btn-primary" onclick="submitFlags('${esc(name)}','${bid}',${n})">Enregistrer le verdict</button>
+    </div>
+
+    <div class="syn-next panel">
+      <h3>Et ensuite ?</h3>
+      <p class="dim">Après vos choix : <strong>relancer</strong> une session ou ouvrir le <strong>bilan</strong> pour valider vos favorites ♥.</p>
+      <div class="hero-actions" style="margin-top:12px">
+        <button class="btn btn-small btn-primary" onclick="startRun('${esc(name)}','${bid}')">▸ Relancer</button>
+        <button class="btn btn-small btn-ghost" onclick="openSynthesis('${esc(name)}','${bid}')">◈ Voir le bilan</button>
+      </div>
     </div>
 
     <div class="panel">
-      <h3>Beam two — the distant domains used in this iteration</h3>
+      <h3>Beam two — domaines distants de cette itération</h3>
       ${domains || `<span class="mono dim">no domain data</span>`}
     </div>
   </section>`;
   updateCounts();
+  const anchor = location.hash.includes("#idea-") ? location.hash.split("#").pop() : null;
+  if (anchor) {
+    requestAnimationFrame(() => document.getElementById(anchor)?.scrollIntoView({ behavior: "smooth", block: "center" }));
+  }
 }
 
 window.submitFlags = async (name, bid, n) => {
@@ -999,14 +1208,202 @@ window.submitFlags = async (name, bid, n) => {
         feedback: document.getElementById("f-feedback").value,
       }),
     });
-    toast("Feedback locked in — loved ideas will steer the next iteration");
+    toast("Verdict enregistré — vos ♥ love orienteront la prochaine itération");
     location.hash = `#/p/${encodeURIComponent(name)}`;
   } catch (e) { toast(e.message, true); }
 };
 
 /* ================================================================
-   VIEW: Report
+   VIEW: Session synthesis (ideation report)
 ================================================================ */
+
+function synIdeaCard(idea, variant, validation) {
+  const score = idea.score != null ? Number(idea.score).toFixed(2) : "—";
+  const link = idea.link ? `<a class="syn-back-link" href="${idea.link}">↩ Voir en session ${idea.iteration}</a>` : "";
+  const isDone = validation?.done;
+  const retained = idea.retained || (isDone && (validation?.chosen || []).includes(idea.idea_id));
+  const chooseBox = variant === "loved" && !isDone ? `
+    <label class="syn-choose">
+      <input type="checkbox" class="syn-chk" data-id="${esc(idea.idea_id)}" checked>
+      Je retiens cette idée
+    </label>` : "";
+  const retainedBadge = isDone && retained
+    ? `<span class="syn-retained">✓ Retenue pour la suite</span>` : "";
+  return `
+  <article class="syn-idea ${variant}${retained ? " retained" : ""}" id="syn-${esc(idea.idea_id || "")}">
+    <header class="syn-idea-head">
+      <span class="syn-rank">#${String(idea.rank || "?").padStart(2, "0")}</span>
+      <span class="syn-score">${score}</span>
+      ${variant === "loved" ? '<span class="flag love">♥ Favorite</span>' : variant === "liked" ? '<span class="flag like">↑ Intéressante</span>' : ""}
+      ${retainedBadge}
+    </header>
+    ${renderCollisionBlock(idea)}
+    ${renderClarity(idea)}
+    ${renderOriginalIdea(idea.text)}
+    ${idea.why_selected && !(idea.text || "").includes("simulated demo") ? `<p class="syn-why"><strong>Pourquoi retenue :</strong> ${esc(idea.why_selected)}</p>` : ""}
+    ${idea.challenge ? `<p class="syn-challenge"><strong>Question :</strong> ${esc(idea.challenge)}</p>` : ""}
+    ${renderActionBox(idea.action)}
+    ${chooseBox}
+    ${link}
+  </article>`;
+}
+
+function synTimelineRow(t) {
+  return `
+  <div class="syn-tl-row">
+    <span class="syn-tl-n">Iter ${String(t.iteration).padStart(2, "0")}</span>
+    <span class="syn-tl-flow">${t.generated} générées → ${t.retained} retenues → ${t.curated} curatées</span>
+    <span class="syn-tl-flags"><b class="lv">${t.loved}</b> ♥ · <b class="lk">${t.liked}</b> ↑ · ${t.trashed} ✕</span>
+    <span class="badge ${t.flagged ? "ok" : "todo"}">${t.flagged ? "choix ok" : "à choisir"}</span>
+  </div>`;
+}
+
+async function viewSynthesis(name, bid) {
+  let syn;
+  try {
+    syn = await api(`/api/projects/${encodeURIComponent(name)}/brainstorms/${encodeURIComponent(bid)}/synthesis`);
+  } catch (_) {
+    syn = await api(`/api/projects/${encodeURIComponent(name)}/brainstorms/${encodeURIComponent(bid)}/synthesis`, { method: "POST" });
+  }
+
+  const s = syn.stats;
+  const v = syn.validation || {};
+  const emptyState = !syn.shortlist.length && !syn.explore.length
+    ? `<div class="syn-empty">
+        <p>Aucune idée choisie pour l'instant. Retournez sur les cartes de session, puis revenez ici.</p>
+        <a class="btn btn-primary" href="#/p/${encodeURIComponent(name)}">← Retour au projet</a>
+      </div>` : "";
+
+  const validatePanel = !v.done && syn.shortlist.length ? `
+    <section class="syn-validate panel">
+      <h2>Valider le bilan</h2>
+      <p class="dim">Cochez les idées ♥ que vous retenez. Notez ce que vous ferez ensuite, puis validez pour clore la session.</p>
+      <textarea id="syn-next-note" class="syn-note-input" placeholder="Ex : en parler à l'équipe lundi, faire un brouillon…">${esc(v.note || "")}</textarea>
+      <button class="btn btn-primary" onclick="validateSynthesis('${esc(name)}','${esc(bid)}')">Valider le bilan ✓</button>
+    </section>` : "";
+
+  app.innerHTML = `
+  <section class="view synthesis">
+    ${renderSessionCompass(syn.navigation)}
+    <div class="crumb"><a href="#/">← projets</a> / <a href="#/p/${encodeURIComponent(name)}">${esc(name)}</a> / bilan</div>
+
+    <header class="syn-hero">
+      <p class="syn-eyebrow">Bilan · ${esc(bid.replace("_", " "))}</p>
+      <h1 class="page-title">${esc(syn.objective || name)}</h1>
+      <p class="syn-dek">Mis à jour ${esc(syn.updated)} · ${s.iterations} session${s.iterations === 1 ? "" : "s"}</p>
+      <div class="syn-stats">
+        <span class="syn-pill loved"><b>${s.loved}</b> favorites ♥</span>
+        <span class="syn-pill liked"><b>${s.liked}</b> intéressantes ↑</span>
+        <span class="syn-pill dim"><b>${s.trashed}</b> écartées</span>
+        ${v.done ? `<span class="syn-pill ok">✓ validé</span>` : `<span class="syn-pill todo">à valider</span>`}
+      </div>
+    </header>
+
+    <section class="syn-howto">
+      <h2>Comment lire ce bilan</h2>
+      <div class="syn-howto-grid">
+        <div class="syn-howto-card">
+          <span class="sh-n">1</span>
+          <h3>En clair = quoi faire</h3>
+          <p>Titre + lien avec votre sujet + 3 actions + un test de 30 min. L'original anglais reste en dessous.</p>
+        </div>
+        <div class="syn-howto-card">
+          <span class="sh-n">2</span>
+          <h3>Prochaine étape</h3>
+          <p>Suit le test : notez une variante, ou passez à la 2e action — pas une recopie du test.</p>
+        </div>
+        <div class="syn-howto-card">
+          <span class="sh-n">3</span>
+          <h3>Clôturer</h3>
+          <p>Cochez vos favorites ♥, notez la suite, puis <strong>Valider le bilan</strong> pour marquer la fin.</p>
+        </div>
+      </div>
+    </section>
+
+    ${syn.shortlist.length ? `
+    <section class="syn-section loved-section">
+      <div class="syn-sec-head">
+        <h2>♥ Vos favorites</h2>
+        <span class="syn-count">${syn.shortlist.length} idée${syn.shortlist.length === 1 ? "" : "s"}</span>
+      </div>
+      <p class="syn-sec-lead">Celles que vous avez marquées ♥ — à lire en priorité.</p>
+      <div class="syn-ideas">${syn.shortlist.map(i => synIdeaCard(i, "loved", v)).join("")}</div>
+    </section>` : ""}
+
+    ${syn.explore.length ? `
+    <section class="syn-section explore-section">
+      <div class="syn-sec-head">
+        <h2>↑ À garder en tête</h2>
+        <span class="syn-count">${syn.explore.length} idée${syn.explore.length === 1 ? "" : "s"}</span>
+      </div>
+      <p class="syn-sec-lead">Intéressantes mais moins urgentes — utiles plus tard ou en combinaison.</p>
+      <div class="syn-ideas compact">${syn.explore.map(i => synIdeaCard(i, "liked", v)).join("")}</div>
+    </section>` : ""}
+
+    ${syn.feedback.length ? `
+    <section class="syn-section feedback-section">
+      <h2>Vos notes entre les sessions</h2>
+      <p class="syn-sec-lead">Ce que vous aviez demandé pour la suite.</p>
+      ${syn.feedback.map(f => `
+        <blockquote class="syn-feedback"><span class="mono dim">Session ${f.iteration}</span> — ${esc(f.text)}</blockquote>`).join("")}
+    </section>` : ""}
+
+    ${syn.timeline.length ? `
+    <section class="syn-section timeline-section">
+      <h2>Résumé des sessions</h2>
+      <p class="syn-sec-lead">Combien d'idées à chaque tour — la plupart sont filtrées avant d'arriver ici.</p>
+      <div class="syn-timeline">${syn.timeline.map(synTimelineRow).join("")}</div>
+    </section>` : ""}
+
+    ${syn.insights.length ? `
+    <section class="syn-section insights-section">
+      <details class="syn-details">
+        <summary>Autres idées (${syn.insights.length})</summary>
+        <p class="syn-sec-lead dim">Moins liées à vos textes — à lire avec recul.</p>
+        ${syn.insights.map(i => `
+          <div class="syn-insight"><span class="mono dim">[${i.score ?? "—"}] session ${i.iteration}</span>
+          <p>${mdInline(i.text)}</p></div>`).join("")}
+      </details>
+    </section>` : ""}
+
+    ${syn.discarded.length ? `
+    <section class="syn-section discarded-section">
+      <details class="syn-details">
+        <summary>Écartées (${syn.discarded.length})</summary>
+        <ul class="syn-discarded-list">
+          ${syn.discarded.map(d => `
+            <li><span class="mono dim">[${d.score ?? "—"}] session ${d.iteration}</span> ${esc(d.summary || d.text.slice(0, 120))}</li>`).join("")}
+        </ul>
+      </details>
+    </section>` : ""}
+
+    ${emptyState}
+    ${validatePanel}
+
+    <footer class="syn-footer">
+      <a class="btn btn-ghost" href="#/p/${encodeURIComponent(name)}">← Retour au projet</a>
+      ${syn.has_html ? `<a class="btn btn-ghost" href="/api/projects/${encodeURIComponent(name)}/brainstorms/${encodeURIComponent(bid)}/report.html" target="_blank" rel="noopener">Export HTML ↗</a>` : ""}
+      <button class="btn btn-ghost" onclick="viewReport('${esc(name)}','${esc(bid)}')">Vue technique</button>
+    </footer>
+  </section>`;
+}
+
+window.validateSynthesis = async (name, bid) => {
+  const chosen = [...document.querySelectorAll(".syn-chk:checked")].map(el => el.dataset.id);
+  const note = document.getElementById("syn-next-note")?.value || "";
+  if (!chosen.length) {
+    toast("Cochez au moins une idée ♥ à retenir", true);
+    return;
+  }
+  try {
+    await api(`/api/projects/${encodeURIComponent(name)}/brainstorms/${encodeURIComponent(bid)}/synthesis/validate`, {
+      method: "POST",
+      body: JSON.stringify({ chosen, note }),
+    });
+    toast("Bilan validé — session terminée");
+    viewSynthesis(name, bid);
+  } catch (e) { toast(e.message, true); }
+};
 
 async function viewReport(name, bid) {
   let rep;
@@ -1017,12 +1414,12 @@ async function viewReport(name, bid) {
   }
   app.innerHTML = `
   <section class="view">
-    <div class="crumb"><a href="#/">← projects</a> / <a href="#/p/${encodeURIComponent(name)}">${esc(name)}</a> / ${esc(bid)} / report</div>
+    <div class="crumb"><a href="#/p/${encodeURIComponent(name)}">← synthèse</a> / vue technique</div>
     <div class="sec-head" style="margin-top:20px">
-      <h2>Session report</h2>
+      <h2>Rapport technique</h2>
       <span class="session-actions">
-        ${rep.has_html ? `<a class="btn-small btn-ghost" href="/api/projects/${encodeURIComponent(name)}/brainstorms/${encodeURIComponent(bid)}/report.html" target="_blank" rel="noopener">open HTML report ↗</a>` : ""}
-        <button class="btn-small btn-ghost" onclick="navigator.clipboard.writeText(REPORT_MD).then(()=>toast('Markdown copied'))">copy markdown</button>
+        <a class="btn-small btn-ghost" href="#/p/${encodeURIComponent(name)}/b/${encodeURIComponent(bid)}/synthesis">◈ Retour à la synthèse</a>
+        <button class="btn-small btn-ghost" onclick="navigator.clipboard.writeText(REPORT_MD).then(()=>toast('Markdown copié'))">copier markdown</button>
       </span>
     </div>
     <div class="report-body">${renderMarkdown(rep.markdown)}</div>

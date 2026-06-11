@@ -13,7 +13,7 @@ from pathlib import Path
 
 import yaml
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -26,6 +26,17 @@ from open_collider.skill_interface import (
 )
 from webapp import settings as app_settings
 from webapp.orchestrator import RUNS, OpenAICompatLLM, start_run
+from webapp.synthesis import build_synthesis
+from webapp.session_context import (
+    build_navigation,
+    enrich_idea,
+    enrich_synthesis,
+    save_validation,
+    load_validation,
+    _load_text_meta,
+    _action_for,
+    _normalize_flag,
+)
 
 WEBAPP_DIR = Path(__file__).resolve().parent
 REPO_ROOT = WEBAPP_DIR.parent
@@ -91,6 +102,11 @@ class RunRequest(BaseModel):
 class FlagsRequest(BaseModel):
     flags: dict[str, str]              # idea_id -> loved | liked | trashed
     feedback: str = ""
+
+
+class ValidateSynthesisRequest(BaseModel):
+    chosen: list[str] = []
+    note: str = ""
 
 
 # ======================================================================
@@ -276,11 +292,14 @@ def get_project(name: str):
             })
         has_report = (bdir / "REPORT.md").is_file()
         has_html_report = (bdir / "REPORT.html").is_file()
+        validation = load_validation(bdir)
         brainstorms.append({
             **b,
             "iterations_detail": iters,
             "has_report": has_report,
             "has_html_report": has_html_report,
+            "synthesis_done": validation.get("done", False),
+            "synthesis_validated_at": validation.get("validated_at"),
         })
 
     return {
@@ -336,6 +355,22 @@ def get_iteration(name: str, bid: str, n: int):
         raise HTTPException(404, "Iteration not found")
     cfg = _read_json(iter_dir / "config.json", {})
     curated = _read_json(iter_dir / "curated_ideas.json", [])
+    # Backfill actionable clarity on disk for older iterations
+    from webapp.clarity_llm import needs_clarity_refresh
+    from webapp.idea_clarity import build_clarity
+
+    curated_updated = []
+    save_clarity = False
+    for c in curated:
+        if needs_clarity_refresh(c.get("clarity")):
+            c = {**c, "clarity": build_clarity(c, path, mode="demo")}
+            save_clarity = True
+        curated_updated.append(c)
+    if save_clarity:
+        (iter_dir / "curated_ideas.json").write_text(
+            json.dumps(curated_updated, ensure_ascii=False, indent=2), encoding="utf-8",
+        )
+    curated = curated_updated
     flags = _read_json(iter_dir / "flags.json", {})
     scored = _read_json(iter_dir / "scored_ideas.json", [])
     feedback_path = iter_dir / "feedback.txt"
@@ -356,12 +391,32 @@ def get_iteration(name: str, bid: str, n: int):
             ]
 
     score_values = [i.get("score_aggregate", 0) for i in scored]
+    text_meta = _load_text_meta(path)
+    enriched_curated = []
+    for c in curated:
+        idea_id = c.get("idea_id", "")
+        flag = _normalize_flag(flags.get(idea_id, "trashed"))
+        entry = enrich_idea({**c, "flag": flag}, iter_dir, text_meta, project_dir=path)
+        entry["action"] = _action_for(flag, entry, view="iteration")
+        enriched_curated.append(entry)
+
+    session = None
+    for b in list_brainstorms(str(path)):
+        if b["brainstorm_id"] == bid:
+            session = b
+            break
+    nav = build_navigation(
+        path, bid, view="iteration", iteration=n,
+        session={"iterations_detail": [{"iteration": n, "flagged": (iter_dir / "flags.json").is_file()}]},
+    )
+
     return {
         "config": cfg,
-        "curated": curated,
+        "curated": enriched_curated,
         "flags": flags,
         "feedback": feedback,
         "domains": domains,
+        "navigation": nav,
         "has_html_report": (iter_dir / "ITER_REPORT.html").is_file(),
         "stats": {
             "scored": len(scored),
@@ -416,6 +471,46 @@ def make_report(name: str, bid: str):
     return {"markdown": report}
 
 
+@app.post("/api/projects/{name}/brainstorms/{bid}/synthesis/validate")
+def validate_synthesis(name: str, bid: str, body: ValidateSynthesisRequest):
+    """Mark synthesis as complete with chosen ideas and optional next-step note."""
+    path = _project_dir(name)
+    bdir = path / "brainstorms" / bid
+    if not bdir.is_dir():
+        raise HTTPException(404, "Session not found")
+    if not body.chosen:
+        raise HTTPException(400, "Cochez au moins une idée à retenir")
+    validation = save_validation(bdir, chosen=body.chosen, note=body.note)
+    syn = build_synthesis(path, bid)
+    result = enrich_synthesis(syn, path, bid)
+    result["validation"] = validation
+    return result
+
+
+@app.get("/api/projects/{name}/brainstorms/{bid}/synthesis")
+def get_synthesis(name: str, bid: str):
+    path = _project_dir(name)
+    try:
+        syn = build_synthesis(path, bid)
+        return enrich_synthesis(syn, path, bid)
+    except FileNotFoundError:
+        raise HTTPException(404, "Session not found")
+
+
+@app.post("/api/projects/{name}/brainstorms/{bid}/synthesis")
+def build_synthesis_report(name: str, bid: str):
+    """Generate markdown/HTML on disk and return structured synthesis."""
+    path = _project_dir(name)
+    state = _load_state(path)
+    if state.get("brainstorm_id") != bid:
+        from open_collider.skill_interface import _save_state
+        state["brainstorm_id"] = bid
+        _save_state(path, state)
+    generate_brainstorm_report(str(path))
+    syn = build_synthesis(path, bid)
+    return enrich_synthesis(syn, path, bid)
+
+
 @app.get("/api/projects/{name}/brainstorms/{bid}/report")
 def get_report(name: str, bid: str):
     path = _project_dir(name)
@@ -447,6 +542,14 @@ def get_iter_report_html(name: str, bid: str, n: int):
     return FileResponse(str(html_path), media_type="text/html; charset=utf-8")
 
 
+@app.get("/api/manuel")
+def get_manuel():
+    path = STATIC_DIR / "manuel.md"
+    if not path.is_file():
+        raise HTTPException(404, "Manual not found")
+    return {"markdown": path.read_text(encoding="utf-8")}
+
+
 # ======================================================================
 # Static frontend
 # ======================================================================
@@ -455,11 +558,8 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 @app.get("/manuel")
-def manuel():
-    path = WEBAPP_DIR / "MANUEL.md"
-    if not path.is_file():
-        raise HTTPException(404, "Manual not found")
-    return FileResponse(str(path), media_type="text/markdown; charset=utf-8")
+def manuel_redirect():
+    return RedirectResponse(url="/#/manuel", status_code=302)
 
 
 @app.get("/")

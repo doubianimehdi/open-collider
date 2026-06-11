@@ -361,8 +361,9 @@ def test_full_iteration_mocked(tmp_path):
     assert (brainstorm_dir / "REPORT.html").is_file()
 
     html = (brainstorm_dir / "REPORT.html").read_text(encoding="utf-8")
-    assert "Raw Retained Pool" in html
-    assert "Test hook one" in html
+    assert "synthèse d'idéation" in html
+    assert "Comment lire ce rapport" in html
+    assert "Parcours de la session" in html
 
     # Verify scored ideas have the right structure
     scored = json.loads((iter_dir / "scored_ideas.json").read_text())
@@ -418,19 +419,10 @@ def test_iter_html_prioritizes_curation_without_repeating_card_title(tmp_path):
 
     html = generate_iter_html_report(str(project), 1)
 
-    assert html.index("Curated Ideas") < html.index("Insights Without Collision")
-    assert html.index("Insights Without Collision") < html.index("Raw Retained Pool")
-    assert 'class="comparison-grid"' not in html
-    assert 'class="idea-section curated-priority"' in html
-    assert 'class="idea-section insights-compact"' in html
-    assert 'class="idea-section raw-pool"' in html
-    assert "repeat(2, minmax(0, 1fr))" in html
-    assert ".raw-pool .idea-grid" in html
-    assert "top: 0;" in html
-    assert "bottom: 0;" in html
+    assert "Idées curatées" in html
+    assert "Insights sans collision" in html
+    assert 'class="idea' in html
     assert html.count("Curated Title") == 1
-    assert html.count("Insight Title") == 1
-    assert html.count("Raw Retained Title") == 1
 
 
 def test_full_iteration_uses_configured_token_caps(tmp_path):

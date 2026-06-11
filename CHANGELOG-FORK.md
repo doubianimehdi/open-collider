@@ -9,6 +9,37 @@ chez l'auteur original.
 
 ---
 
+## Clarté actionnable v2 (juin 2026)
+
+Génération du bloc **En clair** (français) **à la création** de chaque idée, ancrée au brief utilisateur.
+
+### Pipeline
+
+| Étape | Détail |
+|-------|--------|
+| Génération | Après chaque collision, appel LLM par lot (live) ou templates demo FR |
+| Schéma | `clarity` v2 : `headline_fr`, `pour_vous`, `actions[]`, `test`, `version`, `source` |
+| Curation | Clarté attachée avant scoring ; backfill auto si `version < 2` au chargement |
+| UI | Boussole 5 étapes, bilan validable (`synthesis_done.json`), collision domaine du texte |
+| Prochaine étape | Consigne complémentaire au test — pas de recopie |
+
+### Fichiers
+
+- `webapp/clarity_llm.py` — prompt, parse, batch attach
+- `webapp/idea_clarity.py` — build/backfill, exports plain_summary
+- `webapp/session_context.py` — navigation, enrichissement idées
+- `webapp/recommendations.py` — suggestions Prochaine étape
+- `webapp/synthesis.py` — agrégation bilan
+- `projects/_template/prompts/idea_clarity.md` — consignes LLM clarté
+- `tests/test_clarity_llm.py` — fixture Discover Weekly / raid front turbulence
+
+### Documentation
+
+- `webapp/static/manuel.md` — manuel FR (`#/manuel`)
+- Guide intégré EN (`#/guide`) — section « How to read En clair »
+
+---
+
 ## Web UI (PR #1 du fork)
 
 **Commits :** `40d245d`, `aecda8a`, merge `658edf6`
@@ -22,7 +53,7 @@ chez l'auteur original.
 | `webapp/settings.py` | Store local provider / clés / modèles / pipeline |
 | `webapp/static/` | SPA sans build (HTML, CSS, JS) |
 | `webapp/README.md` | Doc technique EN |
-| `webapp/MANUEL.md` | Manuel utilisateur FR |
+| `webapp/static/manuel.md` | Manuel utilisateur FR |
 | `.gitignore` | `webapp/settings.json` |
 
 ### Fonctionnalités utilisateur

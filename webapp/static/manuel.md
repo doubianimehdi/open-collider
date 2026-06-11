@@ -4,7 +4,8 @@ Interface web pour le moteur de collision sémantique Open Collider. Ce document
 l'installation, chaque écran, le mode démo vs live, et la façon de lire les résultats.
 
 **Fork :** [doubianimehdi/open-collider](https://github.com/doubianimehdi/open-collider)  
-**Guide rapide intégré :** bouton **guide** dans la barre du haut (en anglais, dans l'app).
+**Guide rapide intégré :** bouton **guide** dans la barre du haut (en anglais).  
+**Ce manuel dans l'app :** bouton **manuel** → `#/manuel`
 
 ---
 
@@ -101,7 +102,9 @@ Chaque ligne **ITER nn** mène à la curation de cette itération. Le badge indi
 Phases affichées en direct :
 
 1. **Domains** — génération des domaines distants (YAML).
-2. **Collide** — chaque paire texte × domaine produit un lot d'idées brutes.
+2. **Collide** — chaque paire texte × domaine produit un lot d'idées brutes ; le bloc **En clair** (français actionnable) est généré **à ce moment** :
+   - **Live** : appel LLM par lot d'idées, ancré au brief
+   - **Demo** : texte FR déterministe simulé, lié au brief
 3. **Score** — le juge note chaque idée sur 5 axes (1–5).
 4. **Curate** — sélection des meilleures idées au-dessus du seuil.
 
@@ -137,13 +140,53 @@ Compteurs : domain sets, collisions, idées brutes, idées scorées.
 
 Lien **iteration HTML report ↗** (si disponible) : rapport visuel standalone de cette itération (PR upstream #1).
 
+### Lire une carte idée — **En clair**
+
+Chaque idée affiche un bloc **En clair** en français (à lire **avant** le texte anglais). Il est produit **à la création** de l'idée, pas après coup. Les anciennes itérations **se mettent à jour** automatiquement au premier chargement si la clarté était en version 1.
+
+| Partie | Contenu |
+|--------|---------|
+| **Titre (headline)** | Une phrase : *quoi tester* pour **votre** brief |
+| **Pour votre sujet** | Mécanisme emprunté traduit + lien explicite au produit ou enjeu du brief |
+| **À appliquer** | 3 actions concrètes sur le produit (pas de consignes méta du type « écrivez une phrase ») |
+| **Cette semaine (≈30 min)** | Un test faisable avec une personne réelle |
+| **Texte original** | Formulation anglaise brute (repliable) |
+| **Prochaine étape** | Consigne **après** le test (ex. noter une variante plus simple) — **pas** une recopie du test |
+
+**Ligne collision** (sous le titre) : `De T01 + inspiré par …` — le domaine cité **dans le texte de l'idée** est prioritaire sur le nom générique du set de domaines.
+
+**Exemple** (brief Discover Weekly / bulle de goût) :
+
+- *Faire évoluer Discover Weekly avant que l'utilisateur ne voie un changement.*
+- Mécanisme fourmis : changements invisibles d'abord, puis effet en surface.
+- Actions : signaux d'écoute faibles, micro-variante playlist, mesure à J+7.
+- Test : montrer la playlist à quelqu'un — noter s'il voit un changement.
+
 ---
 
-## 8. Rapport de session (`#/p/.../report`)
+## 8. Bilan de session (`#/p/<nom>/b/<session>/synthesis`)
 
-- Affichage markdown dans l'UI.
-- **copy markdown** — presse-papier.
-- **open HTML report ↗** — `REPORT.html` dans le dossier session (partageable, imprimable).
+**Bouton ◈ Bilan** sur le tableau de bord projet. La **boussole** (Préparer → Générer → Choisir → Relancer → Bilan) apparaît sur la curation et le bilan.
+
+### Clôturer la session
+
+1. Lire vos **favorites ♥** et le bloc **En clair** de chaque idée.
+2. Lire **Prochaine étape** — consigne complémentaire au test de 30 min, pas une recopie.
+3. Cocher les idées que vous retenez vraiment.
+4. Noter ce que vous ferez ensuite (optionnel).
+5. Cliquer **Valider le bilan ✓** — la boussole affiche « Bilan validé », le projet indique **bilan validé**, fichier `synthesis_done.json` enregistré.
+
+### Lire une idée (curation ou bilan)
+
+1. **En clair** — titre + pour votre sujet + 3 actions + test 30 min (voir §7).
+2. **Texte original** — formulation exacte de la génération (repliable).
+3. **Prochaine étape** — quoi faire *après* le test ou en second lieu.
+
+### Boussole (toutes les vues)
+
+Rappel des 5 étapes : Préparer → Générer → Choisir → Relancer → Bilan.
+
+Chaque carte montre **d'où vient l'idée** (`De T01 + inspiré par …`) sans remonter ailleurs.
 
 Fichiers sur disque :
 
@@ -202,7 +245,7 @@ Laisser vide = défauts du fournisseur.
 | Clé API | Non | Oui (Settings) |
 | Durée | Quelques secondes | 5–15 min |
 | Coût | 0 | Selon provider |
-| Idées | Placeholders étiquetés | Réelles |
+| Idées | Placeholders étiquetés + **En clair FR simulé** | Réelles + **En clair FR via LLM** |
 | Structure disque | Identique | Identique |
 
 Le pill en haut à droite indique `demo` ou `live: anthropic` / `live: openai`.
@@ -240,7 +283,8 @@ Voir aussi [`CHANGELOG-FORK.md`](../CHANGELOG-FORK.md) à la racine.
 
 | Source | Contenu |
 |--------|---------|
-| **Web UI** (PR #1 fork) | Interface complète, guide, settings, UX débutant |
+| **Clarté actionnable v2** (juin 2026) | Bloc **En clair** à la génération (`clarity_llm.py`, `idea_clarity.py`), boussole, bilan validable, collision domaine du texte, tests `test_clarity_llm.py` |
+| **Web UI** (PR #1 fork) | Interface complète, guide, manuel FR, settings, UX débutant |
 | **Upstream PR #1** | Rapports HTML `REPORT.html` / `ITER_REPORT.html` |
 | **Upstream PR #2** | Multi-provider API (Anthropic, OpenAI, Codex), skills Codex |
 | **Upstream PR #3** | Dépendances PDF/reMarkable (`pymupdf`, `reportlab`, `rmscene`) |
@@ -255,11 +299,13 @@ Les PR #1–#3 upstream restent **ouvertes** sur `CL-ML/open-collider` ; leur co
 |-----|------|
 | `#/` | Accueil |
 | `#/guide` | Guide intégré (EN) |
+| `#/manuel` | Manuel utilisateur (FR — ce document) |
 | `#/settings` | Réglages |
 | `#/new` | Nouveau projet |
 | `#/p/<nom>` | Projet |
 | `#/p/<nom>/run/<id>` | Itération en cours |
 | `#/p/<nom>/b/<session>/i/<n>` | Curation |
+| `#/p/<nom>/b/<session>/synthesis` | Bilan de session |
 | `#/p/<nom>/b/<session>/report` | Rapport session |
 
 ---
