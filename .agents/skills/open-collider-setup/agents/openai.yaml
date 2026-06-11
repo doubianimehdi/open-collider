@@ -1,0 +1,4 @@
+interface:
+  display_name: "Open Collider Setup"
+  short_description: "Create and configure Open Collider projects"
+  default_prompt: "Use $open-collider-setup to create a new Open Collider project configured for Codex-only API mode."

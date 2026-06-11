@@ -41,15 +41,17 @@ pip install -e .
 
 ### API mode (fast, parallel, reliable)
 
-Requires an Anthropic API key. Python orchestrates LLM calls in parallel.
+Python orchestrates LLM calls in parallel. Anthropic is the default provider;
+OpenAI Responses API and Codex CLI are also supported.
 
 ```bash
 git clone https://github.com/CL-ML/open-collider.git
 cd open-collider
-pip install -e ".[api]"
-cp .env.example .env
-# Edit .env with your ANTHROPIC_API_KEY
+pip install -e .
 ```
+
+Codex-only mode does not require Anthropic or OpenAI credentials. Direct API
+providers require `pip install -e ".[api]"` plus the matching key in `.env`.
 
 ### Then in Claude Code:
 
@@ -65,11 +67,38 @@ On first `/brainstorm`, you'll be asked to choose API or Skill mode. The choice 
 |                | **API mode**                    | **Skill mode**                       |
 |----------------|---------------------------------|--------------------------------------|
 | Speed          | ~10 min/iteration (parallel)    | ~25 min/iteration (sequential)       |
-| Cost           | ~$2–3/iteration                 | Free (Max subscription covers it)    |
+| Cost           | Provider-dependent              | Free (Max subscription covers it)    |
 | Reliability    | Rock-solid (Python orchestration) | Can be flaky (subagent coordination) |
-| Requirements   | Anthropic API key               | Claude Code Max subscription         |
+| Requirements   | Anthropic/OpenAI key, or Codex CLI | Claude Code Max subscription      |
 
 **What you'll see on a first run.** `/collider_setup` produces a project folder with your brief, reference texts, and scoring axes. `/brainstorm` then prints the domain bank as it generates, streams idea batches per collision, scores them on your axes, and presents curated ideas inline for love/like/trash. A first iteration ends with a `REPORT.md` you can read or share, and a structured `iter_001/` folder for inspection.
+
+### Codex / agent-compatible workflow
+
+Open Collider also ships two agent-compatible Codex skills:
+
+```text
+.agents/skills/open-collider-setup/
+.agents/skills/open-collider-brainstorm/
+```
+
+They give Codex users equivalents for both Claude Code slash commands:
+
+- `$open-collider-setup`: interview the user, create the project, write the brief,
+  configure provider/scoring, index reference texts, and prepare prompts.
+- `$open-collider-brainstorm`: run the Python iteration, curate scored ideas, display numbered
+  candidates, collect love/like/trash flags, and regenerate reports.
+
+To install and use it with Codex:
+
+```bash
+mkdir -p ~/.codex/skills
+cp -R .agents/skills/open-collider-setup ~/.codex/skills/
+cp -R .agents/skills/open-collider-brainstorm ~/.codex/skills/
+
+codex 'Use $open-collider-setup to create a new Open Collider project configured for Codex-only API mode.'
+codex 'Use $open-collider-brainstorm to run a complete brainstorm for projects/my_project. Do the post-run curation and ask me for love/like/trash flags.'
+```
 
 ---
 
@@ -215,8 +244,61 @@ Python handles prompt building and response parsing. The LLM calls happen either
   2. Generate ideas         (parallel, Sonnet, 4 concurrent)
   3. Score ideas            (parallel batches, Sonnet, 3 concurrent)
   4. Apply threshold + finalize
-  → Claude Code curates inline + displays + collects flags
+  → Claude Code command or Codex skill curates inline + displays + collects flags
 ```
+
+API mode defaults to Anthropic. If a project sets `llm_provider: openai`
+or `llm_provider: codex`, its unprefixed model names must match that provider;
+otherwise Open Collider fails early with a configuration error. You can also
+mix providers per stage by prefixing individual model names:
+
+Codex-only configuration:
+
+```yaml
+llm_backend: api
+llm_provider: codex
+domain_model: default
+generation_model: default
+scoring_model: default
+max_concurrent: 1
+max_concurrent_scoring: 1
+llm_timeout: 120
+domain_max_tokens: 4000
+generation_max_tokens: 1200
+scoring_max_tokens: 2000
+```
+
+OpenAI Responses-compatible local server configuration, for example with `ds4-server`:
+
+```bash
+export OPENAI_BASE_URL=http://127.0.0.1:8000/v1
+export OPENAI_API_KEY=dsv4-local
+```
+
+```yaml
+llm_backend: api
+llm_provider: openai
+domain_model: deepseek-v4-flash
+generation_model: deepseek-v4-flash
+scoring_model: deepseek-v4-flash
+max_concurrent: 1
+max_concurrent_scoring: 1
+```
+
+Mixed-provider configuration:
+
+```yaml
+llm_provider: anthropic
+domain_model: anthropic:claude-opus-4-20250514
+generation_model: openai:gpt-4.1
+scoring_model: codex:default
+```
+
+The `codex:` provider is experimental. It shells out to `codex exec` for each
+LLM call, so it is useful for local agent experiments but slower and less
+deterministic than direct API providers. Use `default` to let the local Codex
+CLI choose the model supported by your account; specific model names are
+provider/account dependent.
 
 **Skill mode:**
 ```
