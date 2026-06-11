@@ -13,7 +13,10 @@ authors = [{ name = "Cedric Lion" }]
 keywords = ["llm", "creativity", "bisociation", "ideation"]
 
 dependencies = [
+    "pymupdf>=1.27.2.3",
     "pyyaml>=6.0",
+    "reportlab>=4.5.1",
+    "rmscene>=0.8.0",
 ]
 
 [project.optional-dependencies]
