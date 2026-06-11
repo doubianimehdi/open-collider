@@ -5,9 +5,10 @@ The actual LLM calls are made by Claude Code (the skill), not by Python.
 
 from __future__ import annotations
 
+import html
 import json
 import logging
-import shutil
+import re
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -16,7 +17,7 @@ import yaml
 
 from open_collider.config import load_project_config
 from open_collider.phases.idea_generator import IdeaGenerator, sample_combos
-from open_collider.phases.idea_scorer import IdeaScorer, apply_threshold, BATCH_SIZE
+from open_collider.phases.idea_scorer import IdeaScorer, BATCH_SIZE
 from open_collider.prompt_resolver import PromptResolver
 from open_collider.scoring.data_loader import DataLoader
 from open_collider.strategies.fresh import FreshStrategy, parse_domain_response
@@ -367,6 +368,7 @@ def finalize_iteration(
     _save_state(project_path, bs_state)
 
     # Generate/update REPORT.md
+    generate_iter_html_report(project_dir, iteration)
     generate_report(project_dir, state)
 
     return {
@@ -418,6 +420,8 @@ def apply_flags(project_dir: str, iteration: int, flags: dict) -> None:
 
     # Generate iteration report
     generate_iter_report(project_dir, iteration)
+    generate_iter_html_report(project_dir, iteration)
+    generate_report(project_dir)
 
 
 def mark_curated(project_dir: str) -> None:
@@ -507,6 +511,89 @@ def generate_iter_report(project_dir: str, iteration: int) -> str:
 
     report = "\n".join(lines)
     (iter_dir / "ITER_REPORT.md").write_text(report, encoding="utf-8")
+    return report
+
+
+def generate_iter_html_report(project_dir: str, iteration: int) -> str:
+    """Generate iter_NNN/ITER_REPORT.html for quick browser review."""
+    project_path = Path(project_dir)
+    bs_state = _load_state(project_path)
+    brainstorm_dir = project_path / "brainstorms" / bs_state.get("brainstorm_id", "")
+    iter_dir = brainstorm_dir / f"iter_{iteration:03d}"
+
+    config_path = iter_dir / "config.json"
+    scored_path = iter_dir / "scored_ideas.json"
+    curated_path = iter_dir / "curated_ideas.json"
+    insights_path = iter_dir / "insights_without_collision.json"
+    flags_path = iter_dir / "flags.json"
+
+    iter_cfg = _load_json_if_exists(config_path, {})
+    scored = _load_json_if_exists(scored_path, [])
+    curated = _load_json_if_exists(curated_path, [])
+    insights = _load_json_if_exists(insights_path, [])
+    flags = _load_json_if_exists(flags_path, {})
+    numbering = _load_numbering_map(iter_dir)
+    retained = sorted(
+        [idea for idea in scored if idea.get("retained")],
+        key=lambda idea: idea.get("score_aggregate", 0),
+        reverse=True,
+    )
+
+    title = f"{project_path.name}: iteration {iteration}"
+    body = [
+        _html_header(title),
+        "<main class=\"shell\">",
+        "<div class=\"page-frame\" aria-hidden=\"true\"></div>",
+        f"<p class=\"eyebrow\">Open Collider report · { _e(project_path.name) }</p>",
+        f"<h1>Iteration {iteration}</h1>",
+        f"<p class=\"dek\">{_e(brainstorm_dir.name)} · same source material, scored and curated through distant-domain collision.</p>",
+        "<section class=\"summary-grid\">",
+        _metric("Generated", iter_cfg.get("ideas_generated", len(scored))),
+        _metric("Retained", iter_cfg.get("ideas_retained", len(retained))),
+        _metric("Curated", len(curated)),
+        _metric("Insights", len(insights)),
+        "</section>",
+    ]
+    if curated:
+        body.append(_render_idea_section(
+            "Curated Ideas",
+            curated,
+            flags,
+            numbering,
+            section_label="Agent curation",
+            section_class="curated-priority",
+            highlighted=True,
+        ))
+        if insights:
+            body.append(_render_idea_section(
+                "Insights Without Collision",
+                insights,
+                flags,
+                numbering,
+                section_label="Useful but less collision-shaped",
+                section_class="insights-compact",
+            ))
+    elif insights:
+        body.append(_render_idea_section(
+            "Insights Without Collision",
+            insights,
+            flags,
+            numbering,
+            section_label="Useful but less collision-shaped",
+            section_class="insights-compact",
+        ))
+    if retained:
+        body.append(_render_idea_section(
+            "Raw Retained Pool",
+            retained,
+            flags,
+            section_label="Scored pool",
+            section_class="raw-pool",
+        ))
+    body.extend(["</main>", "</body></html>"])
+
+    report = "\n".join(body)
+    (iter_dir / "ITER_REPORT.html").write_text(report, encoding="utf-8")
     return report
 
 
@@ -666,12 +753,598 @@ def generate_brainstorm_report(project_dir: str) -> str:
 
     report = "\n".join(lines)
     (brainstorm_dir / "REPORT.md").write_text(report, encoding="utf-8")
+    _write_brainstorm_html_report(project_path, brainstorm_dir, iter_summaries)
+    for summary in iter_summaries:
+        if isinstance(summary.get("iteration"), int):
+            generate_iter_html_report(project_dir, summary["iteration"])
     return report
 
 
 def generate_report(project_dir: str, state: dict | None = None) -> str:
     """Backward-compatible wrapper: generates the brainstorm report."""
     return generate_brainstorm_report(project_dir)
+
+
+def _write_brainstorm_html_report(
+    project_path: Path,
+    brainstorm_dir: Path,
+    iter_summaries: list[dict],
+) -> str:
+    """Write brainstorm_NNN/REPORT.html with all retained ideas by iteration."""
+    title = f"{project_path.name}: {brainstorm_dir.name}"
+    body = [
+        _html_header(title),
+        "<main class=\"shell\">",
+        "<div class=\"page-frame\" aria-hidden=\"true\"></div>",
+        f"<p class=\"eyebrow\">Open Collider report · { _e(project_path.name) }</p>",
+        f"<h1>{_e(brainstorm_dir.name)}</h1>",
+        f"<p class=\"dek\">Last updated: {_e(datetime.now().strftime('%Y-%m-%d %H:%M'))}. Aggregated brainstorm report with raw retained ideas, curation, and flagging state.</p>",
+        "<section class=\"summary-table-wrap\">",
+        "<h2>Summary</h2>",
+        "<table class=\"summary-table\">",
+        "<thead><tr><th>Iter</th><th>Generated</th><th>Retained</th><th>Curated</th>"
+        "<th>Insights</th><th>Loved</th><th>Liked</th><th>Trashed</th></tr></thead>",
+        "<tbody>",
+    ]
+
+    for summary in iter_summaries:
+        body.append(
+            "<tr>"
+            f"<td>{_e(summary.get('iteration', '?'))}</td>"
+            f"<td>{_e(summary.get('generated', 0))}</td>"
+            f"<td>{_e(summary.get('retained', 0))}</td>"
+            f"<td>{_e(summary.get('curated', 0))}</td>"
+            f"<td>{_e(summary.get('insights', 0))}</td>"
+            f"<td>{_e(summary.get('loved', 0))}</td>"
+            f"<td>{_e(summary.get('liked', 0))}</td>"
+            f"<td>{_e(summary.get('trashed', 0))}</td>"
+            "</tr>"
+        )
+
+    body.extend(["</tbody></table>", "</section>"])
+
+    for summary in iter_summaries:
+        iteration = summary.get("iteration")
+        if not isinstance(iteration, int):
+            continue
+        iter_dir = brainstorm_dir / f"iter_{iteration:03d}"
+        scored = _load_json_if_exists(iter_dir / "scored_ideas.json", [])
+        curated = _load_json_if_exists(iter_dir / "curated_ideas.json", [])
+        insights = _load_json_if_exists(iter_dir / "insights_without_collision.json", [])
+        flags = _load_json_if_exists(iter_dir / "flags.json", {})
+        numbering = _load_numbering_map(iter_dir)
+        retained = sorted(
+            [idea for idea in scored if idea.get("retained")],
+            key=lambda idea: idea.get("score_aggregate", 0),
+            reverse=True,
+        )
+
+        body.append(
+            f"<section class=\"iteration\"><div class=\"iteration-heading\">"
+            f"<p class=\"eyebrow\">Iteration {iteration}</p>"
+            f"<h2>Curated first, raw pool last</h2>"
+            "</div>"
+        )
+        if curated:
+            body.append(_render_idea_section(
+                "Curated Ideas",
+                curated,
+                flags,
+                numbering,
+                section_label="Agent curation",
+                section_class="curated-priority",
+                highlighted=True,
+            ))
+            if insights:
+                body.append(_render_idea_section(
+                    "Insights Without Collision",
+                    insights,
+                    flags,
+                    numbering,
+                    section_label="Useful but less collision-shaped",
+                    section_class="insights-compact",
+                ))
+        elif insights:
+            body.append(_render_idea_section(
+                "Insights Without Collision",
+                insights,
+                flags,
+                numbering,
+                section_label="Useful but less collision-shaped",
+                section_class="insights-compact",
+            ))
+        if retained:
+            body.append(_render_idea_section(
+                "Raw Retained Pool",
+                retained,
+                flags,
+                section_label="Scored pool",
+                section_class="raw-pool",
+            ))
+        body.append("</section>")
+
+    body.extend(["</main>", "</body></html>"])
+    report = "\n".join(body)
+    (brainstorm_dir / "REPORT.html").write_text(report, encoding="utf-8")
+    return report
+
+
+def _html_header(title: str) -> str:
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{_e(title)}</title>
+  <style>
+    :root {{
+      --paper: #efede4;
+      --paper-warm: #e6e2d6;
+      --card: #f7f5ef;
+      --ink: #191917;
+      --body: #4f4e49;
+      --muted: #77736c;
+      --line: #2c2a26;
+      --hairline: #d5d0c4;
+      --accent: #d9775c;
+      --accent-dark: #a95542;
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: Georgia, "Times New Roman", ui-serif, serif;
+      line-height: 1.55;
+    }}
+    .shell {{
+      position: relative;
+      width: min(1360px, calc(100vw - 48px));
+      margin: 0 auto;
+      padding: 58px 0 70px;
+    }}
+    .page-frame::before,
+    .page-frame::after {{
+      content: "";
+      position: fixed;
+      width: 22px;
+      height: 22px;
+      pointer-events: none;
+      z-index: 1;
+    }}
+    .page-frame::before {{
+      left: 24px;
+      top: 24px;
+      border-left: 2px solid var(--accent);
+      border-top: 2px solid var(--accent);
+    }}
+    .page-frame::after {{
+      right: 24px;
+      bottom: 24px;
+      border-right: 2px solid var(--accent);
+      border-bottom: 2px solid var(--accent);
+    }}
+    .eyebrow {{
+      margin: 0 0 18px;
+      color: var(--accent);
+      font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+    }}
+    h1 {{
+      max-width: 1100px;
+      margin: 0 0 24px;
+      font-size: clamp(42px, 5.2vw, 78px);
+      line-height: 1.03;
+      letter-spacing: 0;
+      text-wrap: balance;
+    }}
+    h2 {{
+      margin: 0 0 8px;
+      font-size: clamp(28px, 2.8vw, 44px);
+      line-height: 1.06;
+      letter-spacing: 0;
+      text-wrap: balance;
+    }}
+    h3 {{
+      margin: 0;
+      font-size: 23px;
+      line-height: 1.12;
+      letter-spacing: 0;
+      text-wrap: pretty;
+    }}
+    .dek {{
+      max-width: 860px;
+      margin: 0 0 36px;
+      color: var(--muted);
+      font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+      font-size: 15px;
+      font-weight: 700;
+    }}
+    .summary-grid {{
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 1px;
+      margin: 34px 0 42px;
+      border-top: 2px solid var(--line);
+      border-bottom: 2px solid var(--line);
+      background: var(--hairline);
+    }}
+    .metric {{
+      padding: 18px 20px;
+      background: var(--paper);
+    }}
+    .metric-value {{
+      display: block;
+      margin-bottom: 4px;
+      font-size: 34px;
+      font-weight: 800;
+      line-height: 1;
+    }}
+    .metric-label {{
+      color: var(--muted);
+      font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+    }}
+    .summary-table-wrap {{
+      margin: 34px 0 42px;
+      padding: 22px 0 8px;
+      overflow-x: auto;
+      border-top: 2px solid var(--line);
+      border-bottom: 2px solid var(--line);
+    }}
+    .summary-table {{
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 720px;
+      font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+      font-size: 13px;
+    }}
+    .summary-table th, .summary-table td {{
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--hairline);
+      text-align: left;
+    }}
+    .summary-table th {{
+      color: var(--accent-dark);
+      font-size: 12px;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }}
+    .iteration {{
+      margin-top: 48px;
+    }}
+    .iteration-heading {{
+      padding-bottom: 22px;
+    }}
+    .idea-section {{
+      margin: 44px 0;
+    }}
+    .curated-priority {{
+      margin-top: 42px;
+      padding: 34px 38px 38px;
+      border-top: 2px solid var(--line);
+      border-bottom: 2px solid var(--line);
+      background: var(--paper-warm);
+    }}
+    .curated-priority .idea-card {{
+      background: var(--card);
+    }}
+    .insights-compact {{
+      margin-top: 34px;
+      padding-top: 26px;
+      border-top: 1px solid var(--hairline);
+    }}
+    .insights-compact .idea-grid {{
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px 24px;
+    }}
+    .insights-compact .idea-card {{
+      grid-template-columns: 46px minmax(0, 1fr);
+      padding-top: 18px;
+      padding-bottom: 18px;
+      background: color-mix(in srgb, var(--card) 58%, transparent);
+    }}
+    .insights-compact h3 {{
+      font-size: 20px;
+    }}
+    .insights-compact .idea-body {{
+      font-size: 16px;
+    }}
+    .raw-pool {{
+      margin-top: 54px;
+      padding-top: 28px;
+      border-top: 1px solid var(--hairline);
+    }}
+    .raw-pool .idea-grid {{
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px 24px;
+    }}
+    .raw-pool h2,
+    .raw-pool .section-subtitle {{
+      color: var(--muted);
+    }}
+    .raw-pool .idea-card {{
+      background: transparent;
+    }}
+    .raw-pool .idea-body {{
+      font-size: 16px;
+    }}
+    .section-kicker {{
+      margin: 0 0 8px;
+      color: var(--accent);
+      font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: .15em;
+      text-transform: uppercase;
+    }}
+    .section-subtitle {{
+      margin: 0 0 22px;
+      color: var(--muted);
+      font-size: 17px;
+      font-style: italic;
+    }}
+    .idea-grid {{
+      display: flex;
+      flex-direction: column;
+      gap: 22px;
+    }}
+    .idea-card {{
+      position: relative;
+      display: grid;
+      grid-template-columns: 54px minmax(0, 1fr);
+      gap: 18px;
+      padding: 24px 26px 24px 0;
+      background: color-mix(in srgb, var(--card) 82%, transparent);
+    }}
+    .idea-card::before {{
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: var(--line);
+    }}
+    .idea-card.is-highlighted::before {{
+      background: var(--accent);
+    }}
+    .idea-number {{
+      padding-top: 4px;
+      color: var(--accent);
+      font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+      font-size: 15px;
+      font-weight: 800;
+      text-align: right;
+      letter-spacing: .12em;
+    }}
+    .idea-content {{
+      min-width: 0;
+    }}
+    .idea-meta {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 12px 0 14px;
+    }}
+    .pill {{
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 2px 0;
+      color: var(--accent);
+      font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }}
+    .pill + .pill::before {{
+      content: "/";
+      margin-right: 8px;
+      color: var(--hairline);
+    }}
+    .score {{ color: var(--accent-dark); }}
+    .idea-body {{
+      max-width: 72ch;
+      color: var(--body);
+      font-size: 18px;
+    }}
+    .idea-body p {{ margin: 9px 0; }}
+    .idea-body strong {{
+      color: var(--ink);
+      font-weight: 800;
+    }}
+    .judge-note {{
+      margin-top: 16px;
+      color: var(--accent-dark);
+      font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: .04em;
+    }}
+    @media (max-width: 900px) {{
+      .shell {{ width: min(100vw - 24px, 1360px); padding-top: 34px; }}
+      .curated-priority {{ padding: 28px 18px 30px; }}
+      .insights-compact .idea-grid {{ grid-template-columns: 1fr; }}
+      .raw-pool .idea-grid {{ grid-template-columns: 1fr; }}
+      .idea-card {{
+        grid-template-columns: 42px minmax(0, 1fr);
+        padding-right: 12px;
+      }}
+      h1 {{ font-size: clamp(34px, 10vw, 54px); }}
+      h2 {{ font-size: 30px; }}
+      .page-frame::before,
+      .page-frame::after {{ display: none; }}
+    }}
+  </style>
+</head>
+<body>"""
+
+
+def _metric(label: str, value) -> str:
+    return (
+        "<div class=\"metric\">"
+        f"<span class=\"metric-value\">{_e(value)}</span>"
+        f"<span class=\"metric-label\">{_e(label)}</span>"
+        "</div>"
+    )
+
+
+def _render_idea_section(
+    title: str,
+    ideas: list[dict],
+    flags: dict | None = None,
+    numbering: dict[str, int] | None = None,
+    *,
+    section_label: str | None = None,
+    section_class: str | None = None,
+    highlighted: bool = False,
+) -> str:
+    flags = flags or {}
+    if not ideas:
+        return ""
+    numbering = numbering or {}
+    cards = "\n".join(
+        _render_idea_card(idea, flags, numbering, highlighted=highlighted)
+        for idea in ideas
+    )
+    label_html = (
+        f"<p class=\"section-kicker\">{_e(section_label)}</p>"
+        if section_label
+        else ""
+    )
+    class_attr = "idea-section"
+    if section_class:
+        class_attr = f"{class_attr} {section_class}"
+    return (
+        f"<section class=\"{_e(class_attr)}\">"
+        f"{label_html}"
+        f"<h2>{_e(title)}</h2>"
+        f"<p class=\"section-subtitle\">{len(ideas)} ideas shown.</p>"
+        f"<div class=\"idea-grid\">{cards}</div>"
+        "</section>"
+    )
+
+
+def _render_idea_card(
+    idea: dict,
+    flags: dict,
+    numbering: dict[str, int],
+    *,
+    highlighted: bool = False,
+) -> str:
+    text = idea.get("text", "")
+    title = _extract_labeled_line(text, "Territory") or _first_nonempty_line(text) or "Idea"
+    score = idea.get("score_aggregate", idea.get("score", "?"))
+    idea_id = idea.get("idea_id", "")
+    flag = flags.get(idea_id)
+    display_number = _idea_display_number(idea, numbering)
+
+    meta = [f"<span class=\"pill score\">Score {_e(score)}</span>"]
+    if flag:
+        meta.append(f"<span class=\"pill\">{_e(flag)}</span>")
+    if idea.get("combo"):
+        meta.append(f"<span class=\"pill\">{_e(idea['combo'])}</span>")
+
+    note = idea.get("judge_note") or idea.get("why_selected") or idea.get("why_kept")
+    note_html = f"<div class=\"judge-note\">{_e(note)}</div>" if note else ""
+    card_class = "idea-card is-highlighted" if highlighted else "idea-card"
+
+    return (
+        f"<article class=\"{card_class}\">"
+        f"<div class=\"idea-number\">{_e(display_number)}</div>"
+        "<div class=\"idea-content\">"
+        f"<h3>{_e(title)}</h3>"
+        f"<div class=\"idea-meta\">{''.join(meta)}</div>"
+        f"<div class=\"idea-body\">{_format_idea_text_html(text, title)}</div>"
+        f"{note_html}"
+        "</div>"
+        "</article>"
+    )
+
+
+def _format_idea_text_html(text: str, title: str | None = None) -> str:
+    lines = []
+    skipped_title = False
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if (
+            title
+            and not skipped_title
+            and _normalize_card_text(line) == _normalize_card_text(title)
+        ):
+            skipped_title = True
+            continue
+        skipped_title = True
+        label, sep, value = line.partition(":")
+        if sep and len(label) <= 28:
+            lines.append(f"<p><strong>{_e(label)}:</strong> {_e(value.strip())}</p>")
+        else:
+            lines.append(f"<p>{_e(line)}</p>")
+    return "\n".join(lines)
+
+
+def _extract_labeled_line(text: str, label: str) -> str | None:
+    prefix = f"{label}:"
+    for line in text.splitlines():
+        if line.strip().lower().startswith(prefix.lower()):
+            return line.split(":", 1)[1].strip()
+    return None
+
+
+def _first_nonempty_line(text: str) -> str | None:
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped:
+            return stripped
+    return None
+
+
+def _normalize_card_text(value: str) -> str:
+    return re.sub(r"\s+", " ", value.replace("*", "").strip()).lower()
+
+
+def _load_json_if_exists(path: Path, default):
+    if path.is_file():
+        return json.loads(path.read_text(encoding="utf-8"))
+    return default
+
+
+def _load_numbering_map(iter_dir: Path) -> dict[str, int]:
+    numbering = _load_json_if_exists(iter_dir / "numbering_map.json", [])
+    if not isinstance(numbering, list):
+        return {}
+    return {
+        str(entry.get("idea_id")): int(entry["number"])
+        for entry in numbering
+        if entry.get("idea_id") and isinstance(entry.get("number"), int)
+    }
+
+
+def _idea_display_number(idea: dict, numbering: dict[str, int]) -> str:
+    idea_id = str(idea.get("idea_id", ""))
+    if idea_id in numbering:
+        return f"{numbering[idea_id]:02d}"
+    for key in ("rank", "idea_num"):
+        value = idea.get(key)
+        if isinstance(value, int):
+            return f"{value:02d}"
+    return "·"
+
+
+def _e(value) -> str:
+    return html.escape(str(value), quote=True)
 
 
 # ======================================================================
